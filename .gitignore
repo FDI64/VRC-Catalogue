@@ -1,0 +1,20 @@
+# 대용량 DB 파일 제외 (GitHub 100MB 제한 방지)
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# 비밀번호 및 보안 설정 제외
+auth_config.json
+
+# 파이썬 캐시 및 가상환경
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+
+# 에디터 설정
+.vscode/
+.idea/

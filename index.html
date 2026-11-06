@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VRChat BOOTH Catalogue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div id="app" class="max-w-[1680px] mx-auto px-4 sm:px-6 py-6">
+    
+    <!-- 1. 전체 화면 메인 레이아웃 (인증 안 된 경우 블러 처리) -->
+    <div 
+      class="flex flex-col lg:flex-row gap-8 items-start transition duration-300"
+      :class="!isAuthenticated ? 'filter blur-md pointer-events-none select-none' : ''"
+    >
+      <!-- 👈 왼쪽: Sticky 사이드바 -->
+      <aside class="w-full lg:w-80 shrink-0 lg:sticky lg:top-6 max-h-[calc(100vh-3rem)] overflow-y-auto custom-scrollbar bg-slate-900/70 border border-slate-800 p-5 rounded-2xl backdrop-blur-md space-y-5">
+        
+        <div>
+          <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
+            VRChat Catalogue
+          </h1>
+          <p class="text-xs text-slate-400 mt-1">로컬 캐시 기반 BOOTH 애셋 검색기</p>
+        </div>
+
+        <!-- 🌐 한국어 번역 토글 스위치 -->
+        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-base">🌐</span>
+            <div>
+              <div class="text-xs font-bold text-slate-200">
+                한국어 제목 번역
+                <span v-if="isHotTranslating" class="inline-block animate-pulse text-[10px] text-violet-400 font-normal ml-1">번역 중...</span>
+              </div>
+              <div class="text-[10px] text-slate-500">실시간 핫로딩 교체</div>
+            </div>
+          </div>
+
+          <button 
+            @click="toggleTranslation"
+            :disabled="isHotTranslating"
+            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+            :class="translateToKo ? 'bg-violet-600' : 'bg-slate-800'"
+          >
+            <span 
+              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              :class="translateToKo ? 'translate-x-5' : 'translate-x-0'"
+            />
+          </button>
+        </div>
+
+        <!-- 1. 단어 검색창 -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-300">텍스트 검색</label>
+          <div class="flex flex-col gap-2">
+            <div class="flex bg-slate-950 border border-slate-700/80 rounded-lg overflow-hidden focus-within:border-violet-500">
+              <select 
+                v-model="searchType" 
+                class="bg-slate-900 text-slate-300 text-xs px-2.5 py-2 border-r border-slate-700/80 focus:outline-none cursor-pointer"
+              >
+                <option value="shop">🏪 샵</option>
+                <option value="title">📝 제목</option>
+              </select>
+
+              <input 
+                type="text" 
+                v-model="keywordInput"
+                @keyup.enter="applySearch"
+                :placeholder="searchType === 'shop' ? '샵 이름 (Siromori...)' : '제목 (캐시 항목)'"
+                class="bg-transparent text-slate-200 text-xs px-2.5 py-2 flex-1 min-w-0 focus:outline-none placeholder-slate-500"
+              />
+
+              <button 
+                v-if="keywordInput" 
+                @click="clearSearch" 
+                class="text-slate-500 hover:text-slate-300 px-2 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <button 
+              @click="applySearch"
+              class="w-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white py-1.5 rounded-lg text-xs font-semibold transition"
+            >
+              검색
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. 정렬 기준 드롭다운 -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-300">정렬 기준</label>
+          <select 
+            v-model="sortBy" 
+            @change="onFilterChange"
+            class="w-full bg-slate-950 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-violet-500 focus:outline-none cursor-pointer"
+          >
+            <option value="likes">🔥 좋아요 많은 순</option>
+            <option value="trending">⚡ 트렌딩 (출시 대비 급상승)</option>
+            <option value="newest">🕒 최신 등록순</option>
+            <option value="price_asc">💵 낮은 가격순 (무료 우선)</option>
+            <option value="price_desc">💎 높은 가격순</option>
+          </select>
+        </div>
+
+        <!-- 3. 베이스 아바타 선택 -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-300">베이스 아바타</label>
+          <select 
+            v-model="selectedAvatar" 
+            @change="onFilterChange"
+            class="w-full bg-slate-950 border border-slate-700/80 text-slate-200 text-xs rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-violet-500 focus:outline-none cursor-pointer"
+          >
+            <option :value="null">전체 아바타</option>
+            <option v-for="av in avatars" :key="av.avatar_id" :value="av.avatar_id">
+              {{ av.name_ko || av.name_ja }} ({{ av.compatible_item_count.toLocaleString() }}개)
+            </option>
+          </select>
+        </div>
+
+        <!-- 4. MA 필터 -->
+        <div class="pt-0.5">
+          <label class="flex items-center gap-2.5 cursor-pointer bg-slate-950 border border-slate-800 p-2.5 rounded-lg text-xs hover:border-slate-700 transition">
+            <input 
+              type="checkbox" 
+              v-model="maOnly" 
+              @change="onFilterChange" 
+              class="rounded bg-slate-800 border-slate-600 text-violet-500 focus:ring-violet-500 focus:ring-offset-slate-950"
+            >
+            <span class="text-slate-300 font-medium">Modular Avatar 지원만</span>
+          </label>
+        </div>
+
+        <!-- 5. 카테고리 수직 메뉴 -->
+        <div class="space-y-2 pt-2 border-t border-slate-800/80">
+          <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">카테고리</label>
+          <div class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+            <button 
+              @click="selectCategory(null)"
+              class="w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center justify-between"
+              :class="selectedCategory === null 
+                ? 'bg-violet-600 text-white font-bold shadow-md shadow-violet-500/20' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'"
+            >
+              <span>전체 보기</span>
+            </button>
+
+            <button 
+              v-for="cat in categories" 
+              :key="cat.category_id"
+              @click="selectCategory(cat.category_id)"
+              class="w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center justify-between"
+              :class="selectedCategory === cat.category_id 
+                ? 'bg-violet-600 text-white font-bold shadow-md shadow-violet-500/20' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'"
+            >
+              <span>{{ cat.name_ko || cat.name_ja || cat.name_en }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 6. 태그 검색 및 필터 -->
+        <div class="space-y-2.5 pt-2 border-t border-slate-800/80">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-semibold text-slate-300">태그 필터</label>
+            <button 
+              v-if="selectedTags.length > 0" 
+              @click="clearAllTags" 
+              class="text-[10px] text-rose-400 hover:text-rose-300 underline"
+            >
+              태그 초기화
+            </button>
+          </div>
+
+          <div class="relative">
+            <input 
+              type="text" 
+              v-model="tagQuery"
+              @input="onTagInput"
+              placeholder="태그 검색 (안경, 메이드...)"
+              class="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-500"
+            />
+            
+            <div 
+              v-if="tagSuggestions.length > 0" 
+              class="absolute z-20 left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-44 overflow-y-auto custom-scrollbar divide-y divide-slate-800"
+            >
+              <div 
+                v-for="t in tagSuggestions" 
+                :key="t.tag_id" 
+                class="p-2 flex items-center justify-between hover:bg-slate-800/70 text-xs"
+              >
+                <div class="truncate mr-2">
+                  <span class="font-medium text-slate-200">{{ t.name }}</span>
+                  <span v-if="t.name_ko && t.name_ko !== t.name" class="text-[11px] text-violet-400 ml-1">
+                    ({{ t.name_ko }})
+                  </span>
+                </div>
+
+                <div class="flex items-center gap-1 shrink-0">
+                  <button 
+                    @click="addTag(t, 'include')"
+                    class="bg-emerald-950 hover:bg-emerald-800 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold transition"
+                  >
+                    + 포함
+                  </button>
+                  <button 
+                    @click="addTag(t, 'exclude')"
+                    class="bg-rose-950 hover:bg-rose-800 text-rose-300 border border-rose-700 px-2 py-0.5 rounded text-[10px] font-bold transition"
+                  >
+                    - 제외
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedTags.length > 0" class="flex flex-wrap gap-1.5 pt-1">
+            <div 
+              v-for="st in selectedTags" 
+              :key="st.tag_id"
+              class="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold border transition"
+              :class="st.mode === 'include' 
+                ? 'bg-emerald-950/80 border-emerald-700/80 text-emerald-300' 
+                : 'bg-rose-950/80 border-rose-700/80 text-rose-300'"
+            >
+              <button 
+                @click="toggleTagMode(st)" 
+                class="hover:opacity-80 font-black cursor-pointer"
+              >
+                {{ st.mode === 'include' ? '+' : '-' }}
+              </button>
+
+              <span class="truncate max-w-[120px]">{{ st.display_name }}</span>
+
+              <button 
+                @click="removeTag(st.tag_id)" 
+                class="hover:text-white ml-0.5 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. 신규 에셋 동기화 버튼 -->
+        <div class="pt-3 border-t border-slate-800/80">
+          <button 
+            @click="showSyncConfirm = true"
+            :disabled="syncInfo.is_running"
+            class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 active:scale-[0.99] disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-bold shadow-md shadow-violet-600/20 transition cursor-pointer"
+          >
+            <span v-if="syncInfo.is_running" class="inline-block animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full"></span>
+            <span>{{ syncInfo.is_running ? '동기화 진행 중...' : '⚡ 신규 에셋 동기화' }}</span>
+          </button>
+          
+          <div class="mt-1.5 text-center text-[10px] text-slate-500 truncate" :title="syncInfo.progress_msg">
+            상태: {{ syncInfo.progress_msg }}
+          </div>
+        </div>
+
+        <!-- 8. 🔒 [신규] 로그아웃 버튼 -->
+        <div class="pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-500">
+          <span>접속 보호 활성화됨</span>
+          <button @click="handleLogout" class="hover:text-rose-400 font-semibold transition underline">
+            로그아웃
+          </button>
+        </div>
+
+      </aside>
+
+      <!-- 👉 오른쪽: 아이템 뷰어 그리드 -->
+      <main class="flex-1 w-full min-w-0">
+        
+        <!-- 상태 요약 표시줄 -->
+        <div class="flex flex-wrap items-center justify-between pb-4 mb-6 border-b border-slate-800/80 gap-3 text-xs text-slate-400">
+          <div class="flex flex-wrap items-center gap-2">
+            <span>아바타:</span>
+            <span class="text-slate-200 font-bold bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">
+              {{ currentAvatarName }}
+            </span>
+            <span class="text-slate-600">•</span>
+            <span>정렬:</span>
+            <span class="text-fuchsia-400 font-bold bg-fuchsia-950/60 border border-fuchsia-800/60 px-2 py-0.5 rounded">
+              {{ sortLabel }}
+            </span>
+            <span class="text-slate-600">•</span>
+            <span>카테고리:</span>
+            <span class="text-violet-400 font-bold bg-violet-950/60 border border-violet-800/60 px-2 py-0.5 rounded">
+              {{ currentCategoryName }}
+            </span>
+
+            <template v-if="selectedTags.length > 0">
+              <span class="text-slate-600">•</span>
+              <span>태그:</span>
+              <span 
+                v-for="st in selectedTags" 
+                :key="st.tag_id"
+                class="px-2 py-0.5 rounded font-bold text-[10px]"
+                :class="st.mode === 'include' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'"
+              >
+                {{ st.mode === 'include' ? '+' : '-' }}{{ st.display_name }}
+              </span>
+            </template>
+          </div>
+
+          <div v-if="appliedKeyword" class="flex items-center gap-1.5 bg-violet-950/80 border border-violet-800/70 text-violet-300 px-2.5 py-1 rounded-md">
+            <span><strong>[{{ searchType === 'shop' ? '샵' : '제목' }}]</strong> "{{ appliedKeyword }}"</span>
+            <button @click="clearSearch" class="hover:text-rose-400 ml-1">✕</button>
+          </div>
+        </div>
+
+        <!-- 4열 아이템 그리드 -->
+        <div v-if="items.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div 
+            v-for="item in items" 
+            :key="item.item_id"
+            class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-violet-500/60 hover:shadow-xl hover:shadow-violet-500/10 transition-all duration-200 flex flex-col group"
+          >
+            <!-- 썸네일 영역 -->
+            <a :href="'https://booth.pm/ja/items/' + item.item_id" target="_blank" class="block relative aspect-square bg-slate-950 overflow-hidden">
+              <img 
+                v-if="item.thumbnail_url" 
+                :src="item.thumbnail_url" 
+                referrerpolicy="no-referrer"
+                :alt="item.clean_title || item.title"
+                class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                loading="lazy"
+              >
+              <div v-else class="w-full h-full flex flex-col items-center justify-center text-slate-500 text-xs p-3 text-center">
+                <span>이미지 없음</span>
+                <span v-if="!item.is_available" class="text-rose-400 mt-1 font-semibold">(비공개/삭제)</span>
+              </div>
+
+              <!-- 가격 뱃지 -->
+              <span class="absolute bottom-2.5 left-2.5 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-md text-xs font-black shadow"
+                    :class="item.price_jpy === 0 ? 'text-emerald-400' : 'text-slate-100'">
+                {{ item.has_multiple_prices ? '~' : '' }}{{ item.price_jpy === 0 ? '무료' : '¥' + item.price_jpy.toLocaleString() }}
+              </span>
+
+              <!-- 출시일 뱃지 (00.00.00) -->
+              <span v-if="item.published_at" class="absolute top-2.5 right-2.5 bg-slate-950/75 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-semibold text-slate-400 border border-slate-800/80">
+                {{ formatReleaseDate(item.published_at) }}
+              </span>
+            </a>
+
+            <!-- 메타데이터 본문 -->
+            <div class="p-3.5 flex flex-col flex-1 justify-between gap-3">
+              <div>
+                <!-- 제작자명 & 카테고리 뱃지 라인 -->
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                  <span class="text-xs font-semibold text-violet-400/90 truncate tracking-wide flex-1 min-w-0" :title="item.shop_name">
+                    {{ item.shop_name || '제작자' }}
+                  </span>
+
+                  <span 
+                    v-if="item.category_name" 
+                    class="shrink-0 bg-slate-800/90 text-slate-300 text-[10px] font-medium px-2 py-0.5 rounded border border-slate-700/60 truncate max-w-[120px]"
+                    :title="item.subcategory_name ? (item.category_name + ' > ' + item.subcategory_name) : item.category_name"
+                  >
+                    {{ item.subcategory_name ? (item.category_name + ' · ' + item.subcategory_name) : item.category_name }}
+                  </span>
+                </div>
+
+                <!-- 아이템 제목 -->
+                <a 
+                  :href="'https://booth.pm/ja/items/' + item.item_id" 
+                  target="_blank" 
+                  class="text-sm font-bold text-slate-200 hover:text-violet-400 line-clamp-2 leading-snug tracking-tight transition cursor-pointer"
+                  :title="translateToKo 
+                    ? ('[원문] ' + (item.clean_title || item.title)) 
+                    : ('[한국어 번역] ' + (item.title_ko || '번역 없음'))"
+                >
+                  {{ (translateToKo ? (item.title_ko || item.clean_title) : (item.clean_title || item.title)) || '아이템 정보 페치 중...' }}
+                </a>
+              </div>
+
+              <!-- 하단 좋아요 / MA 정보 -->
+              <div class="flex items-center justify-between pt-2.5 border-t border-slate-800/80 text-xs text-slate-400">
+                <span class="flex items-center gap-1 text-rose-400 font-semibold">
+                  ♥ {{ item.likes.toLocaleString() }}
+                </span>
+
+                <span v-if="item.uses_modular_avatar === 'yes'" class="bg-violet-950/80 border border-violet-800/70 text-violet-300 px-2 py-0.5 rounded text-[11px] font-bold">
+                  MA
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!loading && items.length === 0" class="text-center py-24 text-slate-500 text-sm">
+          조건에 맞는 아이템이 없습니다.
+        </div>
+
+        <div v-if="loading" class="text-center py-16">
+          <div class="inline-block animate-spin rounded-full h-9 w-9 border-4 border-violet-500 border-t-transparent"></div>
+          <p class="text-slate-400 text-xs mt-3">아이템을 불러오는 중...</p>
+        </div>
+
+        <div v-if="!loading && items.length > 0" class="text-center mt-12 mb-8">
+          <button 
+            @click="loadMore"
+            class="bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-semibold px-10 py-3 rounded-xl text-sm shadow-lg shadow-violet-600/20 transition cursor-pointer"
+          >
+            더 보기 (12개 추가)
+          </button>
+        </div>
+
+      </main>
+
+    </div>
+
+    <!-- 🛑 동기화 확인 모달 -->
+    <div v-if="showSyncConfirm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center gap-3 text-violet-400">
+          <span class="text-2xl">⚡</span>
+          <h3 class="text-lg font-bold text-white">신규 에셋 동기화 확인</h3>
+        </div>
+
+        <p class="text-sm text-slate-300 leading-relaxed">
+          BOOTH에서 새로 출시된 최신 VRChat 에셋을 탐색하여 로컬 DB에 자동으로 분류 및 등록합니다.<br><br>
+          <span class="text-xs text-slate-400">• 탐색 범위: 최신 3개 페이지 (약 60개 품목 검사)<br>• 이미 등록된 아이템은 중복 수집되지 않습니다.</span>
+        </p>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button @click="showSyncConfirm = false" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition">
+            취소
+          </button>
+          <button @click="startManualSync" class="px-5 py-2 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 active:bg-violet-700 shadow-md shadow-violet-600/30 transition">
+            동기화 시작
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🔑 [신규] 1. 초기 비밀번호 생성 마법사 모달 -->
+    <div v-if="authNeedsSetup" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+      <div class="bg-slate-900 border border-violet-500/40 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
+        <div class="text-center space-y-2">
+          <div class="inline-flex p-3 bg-violet-950/80 border border-violet-800/80 rounded-2xl text-2xl text-violet-300 mb-1">
+            🔐
+          </div>
+          <h2 class="text-xl font-black text-white">초기 비밀번호 생성</h2>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            로컬 비밀번호 파일이 존재하지 않습니다.<br>
+            웹서버를 안전하게 보호할 접속 비밀번호를 생성해 주세요.
+          </p>
+        </div>
+
+        <form @submit.prevent="handleSetupPassword" class="space-y-4">
+          <div>
+            <label class="text-xs font-semibold text-slate-300 mb-1.5 block">새 접속 비밀번호 (4자리 이상)</label>
+            <input 
+              type="password" 
+              v-model="setupPasswordInput" 
+              required
+              minlength="4"
+              placeholder="비밀번호 입력"
+              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500 transition"
+            />
+          </div>
+
+          <div v-if="authError" class="text-xs text-rose-400 font-medium">
+            {{ authError }}
+          </div>
+
+          <button 
+            type="submit" 
+            :disabled="authSubmitting"
+            class="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-violet-600/30 transition disabled:opacity-50"
+          >
+            {{ authSubmitting ? '암호화 저장 중...' : '비밀번호 암호화 저장 및 시작' }}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 🔒 [신규] 2. 접속 비밀번호 잠금 해제(로그인) 모달 -->
+    <div v-if="!authNeedsSetup && !isAuthenticated" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-8 shadow-2xl space-y-6">
+        <div class="text-center space-y-2">
+          <div class="inline-flex p-3 bg-slate-950 border border-slate-800 rounded-2xl text-2xl text-violet-400 mb-1">
+            🔒
+          </div>
+          <h2 class="text-xl font-black text-white">카탈로그 잠금 해제</h2>
+          <p class="text-xs text-slate-400">
+            접속 비밀번호를 입력해 주세요.
+          </p>
+        </div>
+
+        <form @submit.prevent="handleLogin" class="space-y-4">
+          <div>
+            <input 
+              type="password" 
+              v-model="loginPasswordInput" 
+              required
+              autofocus
+              placeholder="비밀번호 입력"
+              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-500 transition"
+            />
+          </div>
+
+          <div v-if="authError" class="text-xs text-rose-400 font-medium">
+            {{ authError }}
+          </div>
+
+          <button 
+            type="submit" 
+            :disabled="authSubmitting"
+            class="w-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold py-3.5 rounded-xl text-sm shadow-lg shadow-violet-600/30 transition disabled:opacity-50"
+          >
+            {{ authSubmitting ? '인증 중...' : '잠금 해제' }}
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        // 🔐 인증 상태 관리
+        const isAuthenticated = ref(false);
+        const authNeedsSetup = ref(false);
+        const setupPasswordInput = ref('');
+        const loginPasswordInput = ref('');
+        const authError = ref('');
+        const authSubmitting = ref(false);
+
+        const avatars = ref([]);
+        const categories = ref([]);
+        const selectedAvatar = ref(248);
+        const selectedCategory = ref(null);
+        const maOnly = ref(false);
+
+        const sortBy = ref('likes');
+        const translateToKo = ref(false);
+        const isHotTranslating = ref(false);
+
+        const searchType = ref('shop');
+        const keywordInput = ref('');
+        const appliedKeyword = ref('');
+
+        const tagQuery = ref('');
+        const tagSuggestions = ref([]);
+        const selectedTags = ref([]);
+        let tagDebounceTimer = null;
+
+        const items = ref([]);
+        const loading = ref(false);
+        const offset = ref(0);
+        const limit = 12;
+
+        const showSyncConfirm = ref(false);
+        const syncInfo = ref({
+          is_running: false,
+          progress_msg: '대기 중',
+          new_count: 0
+        });
+        let syncPollTimer = null;
+
+        // 🛡️ 인증 상태 확인
+        const checkAuth = async () => {
+          try {
+            const res = await fetch('/api/auth/status');
+            const data = await res.json();
+            authNeedsSetup.value = data.needs_setup;
+            isAuthenticated.value = data.is_authenticated;
+
+            if (isAuthenticated.value) {
+              initApp();
+            }
+          } catch (e) {
+            console.error('인증 상태 확인 실패:', e);
+          }
+        };
+
+        // 1. 초기 비밀번호 생성 처리
+        const handleSetupPassword = async () => {
+          authError.value = '';
+          authSubmitting.value = true;
+          try {
+            const res = await fetch('/api/auth/setup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: setupPasswordInput.value })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '설정 실패');
+
+            authNeedsSetup.value = false;
+            isAuthenticated.value = true;
+            initApp();
+          } catch (e) {
+            authError.value = e.message;
+          } finally {
+            authSubmitting.value = false;
+          }
+        };
+
+        // 2. 로그인 처리
+        const handleLogin = async () => {
+          authError.value = '';
+          authSubmitting.value = true;
+          try {
+            const res = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: loginPasswordInput.value })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '인증 실패');
+
+            isAuthenticated.value = true;
+            initApp();
+          } catch (e) {
+            authError.value = e.message;
+          } finally {
+            authSubmitting.value = false;
+          }
+        };
+
+        // 3. 로그아웃 처리
+        const handleLogout = async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          isAuthenticated.value = false;
+          loginPasswordInput.value = '';
+          authError.value = '';
+        };
+
+        const sortLabel = computed(() => {
+          const map = {
+            likes: '🔥 좋아요순',
+            trending: '⚡ 트렌딩',
+            newest: '🕒 최신순',
+            price_asc: '💵 낮은가격순',
+            price_desc: '💎 높은가격순'
+          };
+          return map[sortBy.value] || '정렬';
+        });
+
+        const currentAvatarName = computed(() => {
+          if (!selectedAvatar.value) return '전체';
+          const av = avatars.value.find(a => a.avatar_id === selectedAvatar.value);
+          return av ? (av.name_ko || av.name_ja) : '선택됨';
+        });
+
+        const currentCategoryName = computed(() => {
+          if (!selectedCategory.value) return '전체';
+          const cat = categories.value.find(c => c.category_id === selectedCategory.value);
+          return cat ? (cat.name_ko || cat.name_ja || cat.name_en) : '전체';
+        });
+
+        const formatReleaseDate = (dateStr) => {
+          if (!dateStr) return '';
+          try {
+            const d = new Date(dateStr);
+            const yy = String(d.getFullYear()).slice(-2);
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yy}.${mm}.${dd}`;
+          } catch {
+            return dateStr.slice(2, 10).replace(/-/g, '.');
+          }
+        };
+
+        const fetchAvatars = async () => {
+          try {
+            const res = await fetch('/api/avatars');
+            if (res.status === 401) { isAuthenticated.value = false; return; }
+            avatars.value = await res.json();
+          } catch (e) {
+            console.error('아바타 로드 실패:', e);
+          }
+        };
+
+        const fetchCategories = async () => {
+          try {
+            const res = await fetch('/api/categories');
+            if (res.status === 401) { isAuthenticated.value = false; return; }
+            categories.value = await res.json();
+          } catch (e) {
+            console.error('카테고리 로드 실패:', e);
+          }
+        };
+
+        const checkSyncStatus = async () => {
+          try {
+            const res = await fetch('/api/sync-status');
+            if (res.status === 401) return;
+            const data = await res.json();
+            const wasRunning = syncInfo.value.is_running;
+            syncInfo.value = data;
+
+            if (wasRunning && !data.is_running && data.new_count > 0) {
+              fetchItems(false);
+            }
+          } catch (e) {
+            console.error('동기화 상태 조회 실패:', e);
+          }
+        };
+
+        const startManualSync = async () => {
+          showSyncConfirm.value = false;
+          try {
+            await fetch('/api/sync-new-items', { method: 'POST' });
+            checkSyncStatus();
+            if (!syncPollTimer) {
+              syncPollTimer = setInterval(checkSyncStatus, 1500);
+            }
+          } catch (e) {
+            console.error('동기화 시작 실패:', e);
+          }
+        };
+
+        const onTagInput = () => {
+          clearTimeout(tagDebounceTimer);
+          const q = tagQuery.value.trim();
+          if (!q) {
+            tagSuggestions.value = [];
+            return;
+          }
+
+          tagDebounceTimer = setTimeout(async () => {
+            try {
+              const res = await fetch(`/api/tags?q=${encodeURIComponent(q)}`);
+              tagSuggestions.value = await res.json();
+            } catch (e) {
+              console.error('태그 검색 실패:', e);
+            }
+          }, 250);
+        };
+
+        const addTag = (tagObj, mode) => {
+          const exists = selectedTags.value.find(t => t.tag_id === tagObj.tag_id);
+          const displayName = tagObj.name_ko && tagObj.name_ko !== tagObj.name 
+            ? `${tagObj.name_ko} (${tagObj.name})` 
+            : tagObj.name;
+
+          if (exists) {
+            exists.mode = mode;
+          } else {
+            selectedTags.value.push({
+              tag_id: tagObj.tag_id,
+              name: tagObj.name,
+              display_name: displayName,
+              mode: mode
+            });
+          }
+
+          tagQuery.value = '';
+          tagSuggestions.value = [];
+          onFilterChange();
+        };
+
+        const toggleTagMode = (st) => {
+          st.mode = st.mode === 'include' ? 'exclude' : 'include';
+          onFilterChange();
+        };
+
+        const removeTag = (tagId) => {
+          selectedTags.value = selectedTags.value.filter(t => t.tag_id !== tagId);
+          onFilterChange();
+        };
+
+        const clearAllTags = () => {
+          selectedTags.value = [];
+          onFilterChange();
+        };
+
+        const toggleTranslation = async () => {
+          translateToKo.value = !translateToKo.value;
+          if (!translateToKo.value) return;
+
+          const missing = items.value.filter(it => !it.title_ko);
+          if (missing.length === 0) return;
+
+          isHotTranslating.value = true;
+          try {
+            const ids = missing.map(it => it.item_id).join(',');
+            const res = await fetch(`/api/translate-items?item_ids=${ids}`);
+            const data = await res.json();
+            
+            if (data.translations) {
+              for (const it of items.value) {
+                if (data.translations[it.item_id]) {
+                  it.title_ko = data.translations[it.item_id];
+                }
+              }
+            }
+          } catch (e) {
+            console.error('핫로딩 번역 실패:', e);
+          } finally {
+            isHotTranslating.value = false;
+          }
+        };
+
+        const fetchItems = async (isAppend = false) => {
+          loading.value = true;
+          try {
+            let url = `/api/items?limit=${limit}&offset=${offset.value}&ma_only=${maOnly.value}&sort_by=${sortBy.value}&translate=${translateToKo.value}`;
+            if (selectedAvatar.value) url += `&avatar_id=${selectedAvatar.value}`;
+            if (selectedCategory.value) url += `&category_id=${selectedCategory.value}`;
+            if (appliedKeyword.value) {
+              url += `&search_type=${searchType.value}&keyword=${encodeURIComponent(appliedKeyword.value)}`;
+            }
+
+            const incIds = selectedTags.value.filter(t => t.mode === 'include').map(t => t.tag_id);
+            const excIds = selectedTags.value.filter(t => t.mode === 'exclude').map(t => t.tag_id);
+            if (incIds.length > 0) url += `&include_tags=${incIds.join(',')}`;
+            if (excIds.length > 0) url += `&exclude_tags=${excIds.join(',')}`;
+
+            const res = await fetch(url);
+            if (res.status === 401) { isAuthenticated.value = false; return; }
+            const data = await res.json();
+
+            if (isAppend) {
+              items.value.push(...data.items);
+            } else {
+              items.value = data.items;
+            }
+          } catch (e) {
+            console.error('아이템 로드 실패:', e);
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const onFilterChange = () => {
+          offset.value = 0;
+          fetchItems(false);
+        };
+
+        const selectCategory = (catId) => {
+          selectedCategory.value = catId;
+          onFilterChange();
+        };
+
+        const applySearch = () => {
+          appliedKeyword.value = keywordInput.value.trim();
+          onFilterChange();
+        };
+
+        const clearSearch = () => {
+          keywordInput.value = '';
+          appliedKeyword.value = '';
+          onFilterChange();
+        };
+
+        const loadMore = () => {
+          offset.value += limit;
+          fetchItems(true);
+        };
+
+        // 앱 초기화 (인증 완료 후 호출)
+        const initApp = async () => {
+          await Promise.all([fetchAvatars(), fetchCategories()]);
+          await fetchItems(false);
+          checkSyncStatus();
+          if (!syncPollTimer) {
+            syncPollTimer = setInterval(checkSyncStatus, 2000);
+          }
+        };
+
+        onMounted(() => {
+          checkAuth();
+        });
+
+        return {
+          isAuthenticated,
+          authNeedsSetup,
+          setupPasswordInput,
+          loginPasswordInput,
+          authError,
+          authSubmitting,
+          handleSetupPassword,
+          handleLogin,
+          handleLogout,
+          avatars,
+          categories,
+          selectedAvatar,
+          selectedCategory,
+          maOnly,
+          sortBy,
+          sortLabel,
+          translateToKo,
+          isHotTranslating,
+          toggleTranslation,
+          searchType,
+          keywordInput,
+          appliedKeyword,
+          tagQuery,
+          tagSuggestions,
+          selectedTags,
+          currentAvatarName,
+          currentCategoryName,
+          formatReleaseDate,
+          showSyncConfirm,
+          syncInfo,
+          startManualSync,
+          items,
+          loading,
+          onFilterChange,
+          selectCategory,
+          applySearch,
+          clearSearch,
+          onTagInput,
+          addTag,
+          toggleTagMode,
+          removeTag,
+          clearAllTags,
+          loadMore
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
