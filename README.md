@@ -90,8 +90,8 @@
 
 ### 1) 저장소 복제 (Clone)
 ```bash
-git clone https://github.com/your-username/vrcatalogue-web.git
-cd vrcatalogue-web
+git clone https://github.com/FDI64/VRC-Catalogue.git
+cd VRC-Catalogue
 ```
 
 ### 2) 필수 라이브러리 설치
