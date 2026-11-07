@@ -3,13 +3,148 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VRChat BOOTH Catalogue</title>
+  <title>VRC-Catalogue</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
     .custom-scrollbar::-webkit-scrollbar { width: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    /* ============================================================
+       🎨 9종 전신 테마 정의 (배경/카드/텍스트/테두리 완벽 대응)
+       ============================================================ */
+    
+    /* 1. 🌙 [다크] 미드나잇 퍼플 (기본값) */
+    body, body.theme-dark-violet {
+      --bg-page: #020617; --bg-card: #0f172a; --bg-inner: #020617; --border-main: #1e293b;
+      --text-main: #f8fafc; --text-muted: #94a3b8;
+      --accent-primary: #7c3aed; --accent-hover: #8b5cf6; --accent-text: #a78bfa;
+      --accent-badge-bg: rgba(76, 29, 149, 0.7); --accent-badge-border: rgba(109, 40, 217, 0.6);
+      --gradient-from: #a78bfa; --gradient-to: #e879f9;
+    }
+
+    /* 2. 🌙 [다크] 심해 네이비 */
+    body.theme-dark-navy {
+      --bg-page: #030a16; --bg-card: #0a192f; --bg-inner: #020617; --border-main: #172a45;
+      --text-main: #f0f9ff; --text-muted: #7dd3fc;
+      --accent-primary: #0284c7; --accent-hover: #0ea5e9; --accent-text: #38bdf8;
+      --accent-badge-bg: rgba(8, 47, 73, 0.7); --accent-badge-border: rgba(3, 105, 161, 0.6);
+      --gradient-from: #38bdf8; --gradient-to: #60a5fa;
+    }
+
+    /* 3. 🌙 [다크] 섀도우 포레스트 */
+    body.theme-dark-forest {
+      --bg-page: #021a12; --bg-card: #062c20; --bg-inner: #01130d; --border-main: #0c4a35;
+      --text-main: #ecfdf5; --text-muted: #6ee7b7;
+      --accent-primary: #059669; --accent-hover: #10b981; --accent-text: #34d399;
+      --accent-badge-bg: rgba(6, 78, 59, 0.7); --accent-badge-border: rgba(4, 120, 87, 0.6);
+      --gradient-from: #34d399; --gradient-to: #a3e635;
+    }
+
+    /* 4. 🌙 [다크] 블러드 와인 */
+    body.theme-dark-crimson {
+      --bg-page: #19030a; --bg-card: #2a0813; --bg-inner: #120207; --border-main: #4c0d20;
+      --text-main: #ffe4e6; --text-muted: #fda4af;
+      --accent-primary: #e11d48; --accent-hover: #f43f5e; --accent-text: #fb7185;
+      --accent-badge-bg: rgba(136, 19, 55, 0.7); --accent-badge-border: rgba(190, 18, 60, 0.6);
+      --gradient-from: #fb7185; --gradient-to: #f472b6;
+    }
+
+    /* 5. 🌌 [딥 블랙] 올레드 옵시디언 */
+    body.theme-deep-black {
+      --bg-page: #000000; --bg-card: #09090b; --bg-inner: #18181b; --border-main: #27272a;
+      --text-main: #f4f4f5; --text-muted: #a1a1aa;
+      --accent-primary: #3f3f46; --accent-hover: #52525b; --accent-text: #e4e4e7;
+      --accent-badge-bg: #27272a; --accent-badge-border: #3f3f46;
+      --gradient-from: #ffffff; --gradient-to: #a1a1aa;
+    }
+
+    /* 6. ☀️ [라이트] 퓨어 스노우 */
+    body.theme-light-snow {
+      --bg-page: #f1f5f9; --bg-card: #ffffff; --bg-inner: #e2e8f0; --border-main: #cbd5e1;
+      --text-main: #0f172a; --text-muted: #475569;
+      --accent-primary: #4f46e5; --accent-hover: #4338ca; --accent-text: #4f46e5;
+      --accent-badge-bg: #e0e7ff; --accent-badge-border: #c7d2fe;
+      --gradient-from: #4f46e5; --gradient-to: #9333ea;
+    }
+
+    /* 7. ☀️ [라이트] 벚꽃 사쿠라 */
+    body.theme-light-sakura {
+      --bg-page: #fff1f2; --bg-card: #ffffff; --bg-inner: #ffe4e6; --border-main: #fecdd3;
+      --text-main: #881337; --text-muted: #9f1239;
+      --accent-primary: #e11d48; --accent-hover: #be123c; --accent-text: #e11d48;
+      --accent-badge-bg: #ffe4e6; --accent-badge-border: #fecdd3;
+      --gradient-from: #e11d48; --gradient-to: #fb7185;
+    }
+
+    /* 8. ☀️ [라이트] 말차 그린티 */
+    body.theme-light-matcha {
+      --bg-page: #f0fdf4; --bg-card: #ffffff; --bg-inner: #dcfce7; --border-main: #bbf7d0;
+      --text-main: #064e3b; --text-muted: #047857;
+      --accent-primary: #059669; --accent-hover: #047857; --accent-text: #059669;
+      --accent-badge-bg: #d1fae5; --accent-badge-border: #a7f3d0;
+      --gradient-from: #059669; --gradient-to: #65a30d;
+    }
+
+    /* 9. ☀️ [라이트] 바닐라 라떼 */
+    body.theme-light-latte {
+      --bg-page: #faf5ef; --bg-card: #ffffff; --bg-inner: #f3e8dc; --border-main: #e8d7c3;
+      --text-main: #451a03; --text-muted: #78350f;
+      --accent-primary: #d97706; --accent-hover: #b45309; --accent-text: #b45309;
+      --accent-badge-bg: #fef3c7; --accent-badge-border: #fde68a;
+      --gradient-from: #d97706; --gradient-to: #ea580c;
+    }
+
+    /* ============================================================
+       전역 CSS 변수 매핑 규칙 (HTML 태그 수정 없이 자동 적용)
+       ============================================================ */
+    body {
+      background-color: var(--bg-page) !important;
+      color: var(--text-main) !important;
+    }
+    body aside, body .bg-slate-900, body .bg-slate-900\/70, body .bg-slate-900\/50 {
+      background-color: var(--bg-card) !important;
+    }
+    body .bg-slate-950, body .bg-slate-950\/40, body .bg-slate-950\/60, body .bg-slate-950\/70, body .bg-slate-950\/80, body .bg-slate-950\/85 {
+      background-color: var(--bg-inner) !important;
+    }
+    body .border-slate-800, body .border-slate-800\/60, body .border-slate-800\/70, body .border-slate-800\/80, 
+    body .border-slate-700, body .border-slate-700\/60, body .border-slate-700\/80 {
+      border-color: var(--border-main) !important;
+    }
+    body .text-slate-100, body .text-slate-200, body .text-slate-300, body .text-white {
+      color: var(--text-main) !important;
+    }
+    body .text-slate-400, body .text-slate-500 {
+      color: var(--text-muted) !important;
+    }
+    body input::placeholder {
+      color: var(--text-muted) !important;
+      opacity: 0.6;
+    }
+    body .text-violet-400, body .text-violet-300, body .text-violet-200 {
+      color: var(--accent-text) !important;
+    }
+    body .bg-violet-600 {
+      background-color: var(--accent-primary) !important;
+      color: #ffffff !important;
+    }
+    body .hover\:bg-violet-500:hover {
+      background-color: var(--accent-hover) !important;
+    }
+    body .border-violet-500, body .focus\:border-violet-500:focus, body .focus-within\:border-violet-500:focus-within {
+      border-color: var(--accent-text) !important;
+    }
+    body .bg-violet-950, body .bg-violet-950\/60, body .bg-violet-950\/70, body .bg-violet-950\/80 {
+      background-color: var(--accent-badge-bg) !important;
+    }
+    body .border-violet-800, body .border-violet-800\/60, body .border-violet-800\/70 {
+      border-color: var(--accent-badge-border) !important;
+    }
+    body {
+      --tw-gradient-from: var(--gradient-from) !important;
+      --tw-gradient-to: var(--gradient-to) !important;
+    }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
@@ -25,7 +160,7 @@
         
         <div>
           <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
-            VRChat Catalogue
+            VRC-Catalogue
           </h1>
           <p class="text-xs text-slate-400 mt-1">로컬 캐시 기반 BOOTH 애셋 검색기</p>
         </div>
@@ -54,6 +189,26 @@
               :class="translateToKo ? 'translate-x-5' : 'translate-x-0'"
             />
           </button>
+        </div>
+		
+		<!-- 🎨 테마 설정 드롭다운 (중복 텍스트 제거 및 줄바꿈 방지) -->
+        <div class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl flex items-center justify-between gap-3">
+          <!-- 좌측: 심플한 라벨 (줄바꿈 원천 차단) -->
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-sm">🎨</span>
+            <span class="text-xs font-bold text-slate-200 whitespace-nowrap">테마</span>
+          </div>
+
+          <!-- 우측: 드롭다운 선택창 (공간 넉넉하게 확장) -->
+          <select 
+            v-model="currentTheme" 
+            @change="applyTheme"
+            class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer flex-1 min-w-0"
+          >
+            <option v-for="t in themes" :key="t.id" :value="t.id">
+              {{ t.emoji }} {{ t.name }}
+            </option>
+          </select>
         </div>
 
         <!-- 🔞 연령 등급 구분 버튼 -->
@@ -354,7 +509,7 @@
             class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-violet-500/60 hover:shadow-xl hover:shadow-violet-500/10 transition-all duration-200 flex flex-col group"
           >
             <!-- 썸네일 영역 -->
-            <a :href="'https://booth.pm/ja/items/' + item.item_id" target="_blank" class="block relative aspect-square bg-slate-950 overflow-hidden">
+            <a @click.prevent="openPreview(item)" class="block relative aspect-square bg-slate-950 overflow-hidden cursor-pointer">
               <img 
                 v-if="item.thumbnail_url" 
                 :src="item.thumbnail_url" 
@@ -425,13 +580,12 @@
 
                 <!-- 아이템 제목 -->
                 <a 
-                  :href="'https://booth.pm/ja/items/' + item.item_id" 
-                  target="_blank" 
-                  class="text-sm font-bold text-slate-200 hover:text-violet-400 line-clamp-2 leading-snug tracking-tight transition cursor-pointer"
-                  :title="translateToKo 
-                    ? ('[원문] ' + (item.clean_title || item.title)) 
-                    : ('[한국어 번역] ' + (item.title_ko || '번역 없음'))"
-                >
+				@click.prevent="openPreview(item)"
+				class="text-sm font-bold text-slate-200 hover:text-violet-400 line-clamp-2 leading-snug tracking-tight transition cursor-pointer"
+				:title="translateToKo 
+					? ('[원문] ' + (item.clean_title || item.title)) 
+					: ('[한국어 번역] ' + (item.title_ko || '번역 없음'))"
+				>
                   {{ (translateToKo ? (item.title_ko || item.clean_title) : (item.clean_title || item.title)) || '아이템 정보 페치 중...' }}
                 </a>
               </div>
@@ -470,6 +624,220 @@
 
       </main>
 
+    </div>
+
+<!-- 🖼️ [신규] 아이템 상세 미리보기 팝업 모달 (기본 뼈대) -->
+    <div 
+      v-if="showPreviewModal && previewItem" 
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in"
+      @click.self="closePreview"
+    >
+      <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        
+        <!-- 모달 상단 헤더 (제작자 샵 & 닫기 버튼) -->
+        <div class="p-4 px-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+          <div class="flex items-center gap-2">
+            <img 
+              v-if="previewItem.shop_thumbnail_url" 
+              :src="previewItem.shop_thumbnail_url" 
+              referrerpolicy="no-referrer"
+              class="w-6 h-6 rounded-md object-cover border border-slate-700/60"
+            />
+            <span class="text-xs font-bold text-violet-400">{{ previewItem.shop_name || '제작자' }}</span>
+            <span v-if="previewItem.category_name" class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700/60 ml-1">
+              {{ previewItem.subcategory_name ? `${previewItem.category_name} · ${previewItem.subcategory_name}` : previewItem.category_name }}
+            </span>
+          </div>
+
+          <button @click="closePreview" class="text-slate-400 hover:text-white p-1 text-sm font-bold cursor-pointer">
+            ✕
+          </button>
+        </div>
+
+        <!-- 모달 본문 (스크롤 영역) -->
+        <div class="p-6 overflow-y-auto custom-scrollbar space-y-6">
+          
+          <!-- 이미지 & 기본 정보 영역 (2열 레이아웃) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            
+            <!-- 대형 대표 썸네일 -->
+            <div class="flex flex-col gap-3">
+              <!-- 1. 메인 대형 이미지 (좌우 플로팅 화살표 + 인덱스 뱃지) -->
+              <div class="aspect-square rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 relative group/slider select-none">
+                <img 
+                  v-if="previewImages.length > 0" 
+                  :src="previewImages[currentImageIndex]" 
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover transition duration-300"
+                  :class="previewItem.is_adult ? 'blur-md hover:blur-none' : ''"
+                  alt="preview image"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center text-slate-500 text-xs">
+                  <span>이미지 없음</span>
+                </div>
+
+                <!-- 🔞 R-18 뱃지 -->
+                <span v-if="previewItem.is_adult" class="absolute top-3 left-3 bg-rose-600/90 text-white text-[11px] font-black px-2 py-0.5 rounded shadow z-10 pointer-events-none">
+                  🔞 R-18
+                </span>
+
+                <!-- ◀️ 왼쪽 이동 화살표 -->
+                <button 
+                  v-if="previewImages.length > 1"
+                  @click.stop="prevImage"
+                  class="absolute left-2.5 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/85 text-white w-9 h-9 rounded-full flex items-center justify-center transition shadow-lg opacity-80 hover:opacity-100 cursor-pointer z-10"
+                  title="이전 사진"
+                >
+                  ❮
+                </button>
+
+                <!-- ▶️ 오른쪽 이동 화살표 -->
+                <button 
+                  v-if="previewImages.length > 1"
+                  @click.stop="nextImage"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/85 text-white w-9 h-9 rounded-full flex items-center justify-center transition shadow-lg opacity-80 hover:opacity-100 cursor-pointer z-10"
+                  title="다음 사진"
+                >
+                  ❯
+                </button>
+
+                <!-- 🔢 사진 인덱스 카운터 (예: 1 / 8) -->
+                <span v-if="previewImages.length > 1" class="absolute bottom-3 right-3 bg-slate-950/80 backdrop-blur-md text-[11px] font-bold text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-700/60 z-10">
+                  {{ currentImageIndex + 1 }} / {{ previewImages.length }}
+                </span>
+              </div>
+
+              <!-- 2. 하단 컨트롤 바: 미니 썸네일 가로 스크롤 & 재파싱 버튼 -->
+              <div class="flex items-center justify-between gap-2">
+                <!-- 미니 썸네일 목록 (클릭 시 해당 사진으로 바로 이동) -->
+                <div class="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1 flex-1 min-w-0">
+                  <div 
+                    v-for="(imgUrl, idx) in previewImages" 
+                    :key="idx"
+                    @click="selectImage(idx)"
+                    class="w-12 h-12 rounded-lg overflow-hidden shrink-0 border-2 transition cursor-pointer bg-slate-950"
+                    :class="currentImageIndex === idx 
+                      ? 'border-violet-500 shadow-md shadow-violet-500/30 opacity-100 scale-105' 
+                      : 'border-slate-800 opacity-50 hover:opacity-90'"
+                  >
+                    <img :src="imgUrl" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
+                  </div>
+                </div>
+
+                <!-- 🔄 수동 재파싱 버튼 -->
+                <button 
+                  @click="reparseImages"
+                  :disabled="loadingImages"
+                  class="shrink-0 flex items-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 text-[11px] font-medium px-2.5 py-2 rounded-xl transition cursor-pointer disabled:opacity-50"
+                  title="BOOTH에서 최신 이미지 강제 다시 불러오기"
+                >
+                  <span :class="loadingImages ? 'animate-spin inline-block' : ''">🔄</span>
+                  <span class="hidden sm:inline">재파싱</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 제목 및 스펙 요약 -->
+            <!-- 👉 우측: 스펙, 세부 옵션, 상세 설명 영역 (세로 정렬 완료) -->
+            <div class="space-y-4 flex flex-col w-full">
+              
+              <!-- 1. 제목 -->
+              <div>
+                <h3 class="text-lg font-bold text-white leading-snug">
+                  {{ previewItem.title_ko || previewItem.clean_title || previewItem.title }}
+                </h3>
+                <p v-if="previewItem.title_ko && previewItem.title_ko !== previewItem.clean_title" class="text-xs text-slate-400 mt-1">
+                  원문: {{ previewItem.clean_title || previewItem.title }}
+                </p>
+              </div>
+
+              <!-- 2. 가격 / 좋아요 / 출시일 -->
+              <div class="flex items-center gap-3">
+                <span class="text-lg font-black text-emerald-400">
+                  {{ previewItem.has_multiple_prices ? '~' : '' }}{{ previewItem.price_jpy === 0 ? '무료' : '¥' + previewItem.price_jpy.toLocaleString() }}
+                </span>
+                <span class="text-xs text-rose-400 font-bold bg-rose-950/40 border border-rose-900/40 px-2 py-0.5 rounded-md">
+                  ♥ {{ previewItem.likes.toLocaleString() }}
+                </span>
+                <span v-if="previewItem.published_at" class="text-xs text-slate-400">
+                  출시: {{ formatReleaseDate(previewItem.published_at) }}
+                </span>
+              </div>
+
+              <!-- 3. 태그/기능 뱃지 (가로 배치 후 안전하게 닫힘) -->
+              <div class="flex flex-wrap gap-2 pt-1">
+                <span v-if="previewItem.uses_modular_avatar === 'yes'" class="bg-violet-950/80 border border-violet-800 text-violet-300 text-xs font-bold px-2.5 py-1 rounded-lg">
+                  Modular Avatar 지원
+                </span>
+                <span v-if="previewItem.quest_compatible === 'yes'" class="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs font-bold px-2.5 py-1 rounded-lg">
+                  Quest 대응
+                </span>
+              </div>
+
+              <!-- 4. 📦 세부 옵션 및 가격 (독립된 세로 블록) -->
+              <div v-if="previewVariations && previewVariations.length > 1" class="space-y-1.5 w-full pt-1">
+                <div class="flex items-center justify-between text-xs text-slate-300 font-bold">
+                  <span>📦 세부 옵션 및 가격 ({{ previewVariations.length }}개)</span>
+                  <span v-if="loadingVariations" class="text-[10px] text-violet-400 font-normal animate-pulse">불러오는 중...</span>
+                </div>
+
+                <div class="max-h-36 overflow-y-auto custom-scrollbar p-2 bg-slate-950/70 rounded-xl border border-slate-800 divide-y divide-slate-800/60 text-xs">
+                  <div 
+                    v-for="v in previewVariations" 
+                    :key="v.name" 
+                    class="py-1.5 px-2 flex items-center justify-between gap-3 hover:bg-slate-900/50 rounded-lg transition"
+                  >
+                    <span class="text-slate-300 font-medium truncate" :title="v.name">{{ v.name }}</span>
+                    <span 
+                      class="font-bold shrink-0 text-xs"
+                      :class="formatVariationPrice(v.price) === '무료' ? 'text-emerald-400' : 'text-slate-200'"
+                    >
+                      {{ formatVariationPrice(v.price) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5. 📝 상세 설명 본문 (독립된 세로 블록) -->
+              <div class="space-y-1.5 w-full pt-1">
+                <div class="flex items-center justify-between text-xs text-slate-300 font-bold">
+                  <span>📝 상세 설명</span>
+                  <span v-if="loadingDescription" class="text-[10px] text-violet-400 font-normal animate-pulse">불러오는 중...</span>
+                </div>
+
+                <div class="max-h-[380px] overflow-y-auto custom-scrollbar p-4 bg-slate-950/70 rounded-xl border border-slate-800 text-xs text-slate-300 leading-relaxed break-words whitespace-pre-line select-text">
+                  <div v-if="loadingDescription" class="py-6 text-center text-slate-500 text-xs">
+                    설명을 불러오는 중입니다...
+                  </div>
+                  <div v-else v-html="previewDescription"></div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- 모달 하단 버튼 바 -->
+        <div class="p-4 px-6 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-3">
+          <button 
+            @click="closePreview" 
+            class="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition cursor-pointer"
+          >
+            닫기
+          </button>
+          <a 
+            :href="'https://booth.pm/ja/items/' + previewItem.item_id" 
+            target="_blank" 
+            class="flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 shadow-md shadow-violet-600/20 transition cursor-pointer"
+          >
+            <span>BOOTH 판매 페이지 열기</span>
+            <span>↗</span>
+          </a>
+        </div>
+
+      </div>
     </div>
 
     <!-- 🛑 동기화 확인 모달 -->

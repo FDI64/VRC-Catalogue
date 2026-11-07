@@ -412,6 +412,12 @@ async def crawl_booth_new_assets(max_pages: int = 3):
                         item_id, title, thumbnail_url, is_available, has_multiple_prices, shop_thumbnail_url
                     ) VALUES (?, ?, ?, 1, ?, ?);
                 """, (item["item_id"], item["raw_title"], item["thumb_url"], 1 if item["has_mult_prices"] else 0, item.get("shop_thumbnail_url")))
+                
+                if item.get("shop_name") and item.get("shop_thumbnail_url"):
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO shops (shop_name, shop_url, shop_thumbnail_url)
+                        VALUES (?, ?, ?);
+                    """, (item["shop_name"], item["shop_url"], item["shop_thumbnail_url"]))
 
                 for av_id in item["matched_avatar_ids"]:
                     cursor.execute("""
@@ -467,11 +473,30 @@ def init_cache_table():
     # 💡 [신규] 상점 프로필 썸네일 컬럼 추가
     if "shop_thumbnail_url" not in columns:
         conn.execute("ALTER TABLE item_cache ADD COLUMN shop_thumbnail_url TEXT;")
+        
+    if "image_urls" not in columns:
+        conn.execute("ALTER TABLE item_cache ADD COLUMN image_urls TEXT;")
+        
+    if "description" not in columns:
+        conn.execute("ALTER TABLE item_cache ADD COLUMN description TEXT;")
+    
+    if "variations" not in columns:
+        conn.execute("ALTER TABLE item_cache ADD COLUMN variations TEXT;")
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_item_categories_fast ON item_categories (category_id, item_id);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_item_cat_item ON item_categories (item_id, is_primary);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_compat_fast ON item_avatar_compatibility (avatar_id, item_id);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_item_tags_fast ON item_tags (tag_id, item_id);")
+    
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS shops (
+            shop_name TEXT PRIMARY KEY,
+            shop_url TEXT,
+            shop_thumbnail_url TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_shops_url ON shops (shop_url);")
 
     conn.execute("""
         INSERT OR IGNORE INTO item_categories (item_id, category_id, subcategory_id, is_primary)
@@ -508,6 +533,137 @@ def trigger_sync(background_tasks: BackgroundTasks):
     
     background_tasks.add_task(crawl_booth_new_assets, max_pages=3)
     return {"status": "started", "message": "신규 에셋 수집을 시작했습니다."}
+
+# 🖼️ [신규] 아이템 전체 이미지 온디맨드 조회 및 수동 재파싱 API
+@app.get("/api/items/{item_id}/images", dependencies=[Depends(check_login)])
+async def get_item_images(item_id: int, force: bool = Query(False, description="강제 재파싱 여부")):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. 강제 재파싱이 아니면 로컬 캐시 우선 확인
+    if not force:
+        cursor.execute("SELECT image_urls, thumbnail_url FROM item_cache WHERE item_id = ?", (item_id,))
+        row = cursor.fetchone()
+        if row and row["image_urls"]:
+            try:
+                cached_images = json.loads(row["image_urls"])
+                if cached_images and isinstance(cached_images, list):
+                    conn.close()
+                    return {"images": cached_images}
+            except Exception:
+                pass
+
+    # 2. 캐시가 없거나 강제 재파싱 요청 시 BOOTH JSON API 호출
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,ko;q=0.9,en;q=0.8",
+        "Cookie": "adult=include"
+    }
+    images = []
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        try:
+            resp = await client.get(f"https://booth.pm/ja/items/{item_id}.json", headers=headers)
+            if resp.status_code == 200:
+                jdata = resp.json()
+                for img in jdata.get("images", []):
+                    u = img.get("original") or img.get("resized")
+                    if u and u not in images:
+                        images.append(u)
+                if not images:
+                    images = jdata.get("thumbnail_image_urls", [])
+        except Exception as e:
+            print(f"❌ #{item_id} 전체 이미지 파싱 실패: {e}")
+
+    # 3. 가져온 이미지 목록을 DB에 영구 저장
+    if images:
+        cursor.execute("UPDATE item_cache SET image_urls = ? WHERE item_id = ?", (json.dumps(images), item_id))
+        conn.commit()
+
+    conn.close()
+    return {"images": images}
+    
+# 📝 [신규] 아이템 상세 설명 온디맨드 조회 API
+@app.get("/api/items/{item_id}/description", dependencies=[Depends(check_login)])
+async def get_item_description(item_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. 로컬 캐시 우선 확인
+    cursor.execute("SELECT description FROM item_cache WHERE item_id = ?", (item_id,))
+    row = cursor.fetchone()
+    if row and row["description"]:
+        conn.close()
+        return {"description": row["description"]}
+
+    # 2. 캐시가 없으면 BOOTH JSON API에서 설명문 파싱
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,ko;q=0.9,en;q=0.8",
+        "Cookie": "adult=include"
+    }
+    desc = ""
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        try:
+            resp = await client.get(f"https://booth.pm/ja/items/{item_id}.json", headers=headers)
+            if resp.status_code == 200:
+                desc = resp.json().get("description") or ""
+        except Exception as e:
+            print(f"❌ #{item_id} 설명 파싱 실패: {e}")
+
+    # 3. 가져온 설명을 DB에 저장
+    if desc:
+        cursor.execute("UPDATE item_cache SET description = ? WHERE item_id = ?", (desc, item_id))
+        conn.commit()
+
+    conn.close()
+    return {"description": desc}
+    
+# 📦 [신규] 서브 아이템(바리에이션) 목록 온디맨드 조회 API
+@app.get("/api/items/{item_id}/variations", dependencies=[Depends(check_login)])
+async def get_item_variations(item_id: int):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 1. 로컬 캐시 우선 확인
+    cursor.execute("SELECT variations FROM item_cache WHERE item_id = ?", (item_id,))
+    row = cursor.fetchone()
+    if row and row["variations"]:
+        try:
+            cached_vars = json.loads(row["variations"])
+            conn.close()
+            return {"variations": cached_vars}
+        except Exception:
+            pass
+
+    # 2. 캐시가 없으면 BOOTH JSON API에서 바리에이션 목록 파싱
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,ko;q=0.9,en;q=0.8",
+        "Cookie": "adult=include"
+    }
+    variations = []
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        try:
+            resp = await client.get(f"https://booth.pm/ja/items/{item_id}.json", headers=headers)
+            if resp.status_code == 200:
+                raw_vars = resp.json().get("variations") or []
+                for v in raw_vars:
+                    v_name = v.get("name") or "기본 옵션"
+                    v_price = v.get("price", 0)
+                    variations.append({
+                        "name": v_name,
+                        "price": v_price
+                    })
+        except Exception as e:
+            print(f"❌ #{item_id} 바리에이션 파싱 실패: {e}")
+
+    # 3. 가져온 바리에이션 목록을 DB에 저장
+    if variations:
+        cursor.execute("UPDATE item_cache SET variations = ? WHERE item_id = ?", (json.dumps(variations), item_id))
+        conn.commit()
+
+    conn.close()
+    return {"variations": variations}
 
 @app.get("/api/translate-items", dependencies=[Depends(check_login)])
 async def translate_items_on_demand(item_ids: str = Query(...)):
@@ -713,6 +869,25 @@ def search_tags(q: str = Query(..., min_length=1)):
     conn.close()
     return rows
 
+# 🖼️ 누락된 제작자 프로필 썸네일 1회성 페치 헬퍼 (새로 추가)
+async def fetch_shop_profile(client: httpx.AsyncClient, sample_item_id: int, shop_name: str, shop_url: str):
+    json_url = f"https://booth.pm/ja/items/{sample_item_id}.json"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,ko;q=0.9,en;q=0.8",
+        "Cookie": "adult=include"
+    }
+    try:
+        resp = await client.get(json_url, headers=headers)
+        if resp.status_code == 200:
+            jdata = resp.json()
+            thumb = jdata.get("shop", {}).get("thumbnail_url")
+            if thumb:
+                return shop_name, shop_url, thumb
+    except Exception:
+        pass
+    return shop_name, shop_url, None
+
 # 🚀 [업데이트] c.shop_thumbnail_url 컬럼 조회 추가
 @app.get("/api/items", dependencies=[Depends(check_login)])
 async def get_items(
@@ -814,13 +989,15 @@ async def get_items(
     query = f"""
         SELECT i.item_id, i.shop_name, i.shop_url, i.likes, i.price_jpy, i.published_at,
                i.uses_modular_avatar, i.quest_compatible, i.is_adult,
-               c.title, c.title_ko, c.thumbnail_url, c.shop_thumbnail_url, c.is_available,
+               c.title, c.title_ko, c.thumbnail_url, c.is_available,
                COALESCE(c.has_multiple_prices, 0) as has_multiple_prices,
+               COALESCE(s.shop_thumbnail_url, c.shop_thumbnail_url) as shop_thumbnail_url,
                COALESCE(cat.name_ko, cat.name_ja, cat.name_en) as category_name,
                COALESCE(subcat.name_ko, subcat.name_ja, subcat.name_en) as subcategory_name
         FROM items i
         {join_clause}
         LEFT JOIN item_cache c ON i.item_id = c.item_id
+        LEFT JOIN shops s ON i.shop_name = s.shop_name
         LEFT JOIN item_categories ic ON i.item_id = ic.item_id AND ic.is_primary = 1
         LEFT JOIN categories cat ON ic.category_id = cat.category_id
         LEFT JOIN subcategories subcat ON ic.subcategory_id = subcat.subcategory_id
@@ -831,6 +1008,39 @@ async def get_items(
 
     cursor.execute(query, params)
     items = [dict(row) for row in cursor.fetchall()]
+    # 💡 화면의 12개 아이템 중 로고가 아직 없는 샵들만 중복 제거하여 선별
+    missing_shops = {}
+    for it in items:
+        s_name = it.get("shop_name")
+        if s_name and not it.get("shop_thumbnail_url") and s_name not in missing_shops:
+            missing_shops[s_name] = (it["item_id"], it.get("shop_url") or "")
+
+    if missing_shops:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            tasks = [
+                fetch_shop_profile(client, item_id, s_name, s_url)
+                for s_name, (item_id, s_url) in missing_shops.items()
+            ]
+            shop_results = await asyncio.gather(*tasks)
+
+        new_shops_data = []
+        shop_map = {}
+        for s_name, s_url, s_thumb in shop_results:
+            if s_thumb:
+                new_shops_data.append((s_name, s_url, s_thumb))
+                shop_map[s_name] = s_thumb
+
+        if new_shops_data:
+            cursor.executemany("""
+                INSERT OR REPLACE INTO shops (shop_name, shop_url, shop_thumbnail_url)
+                VALUES (?, ?, ?);
+            """, new_shops_data)
+            conn.commit()
+
+        # 현재 12개 아이템 객체에 방금 가져온 샵 로고 실시간 채우기
+        for it in items:
+            if not it.get("shop_thumbnail_url") and it.get("shop_name") in shop_map:
+                it["shop_thumbnail_url"] = shop_map[it.get("shop_name")]
 
     uncached_items = [it for it in items if it["title"] is None]
     if uncached_items:

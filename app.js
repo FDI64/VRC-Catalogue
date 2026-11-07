@@ -13,15 +13,47 @@ createApp({
     // 🏷️ 필터 및 정렬 상태
     const avatars = ref([]);
     const categories = ref([]);
-    const selectedAvatar = ref(248); // 마누카 기본값
+    const selectedAvatar = ref(null); // 마누카 기본값
     const selectedCategory = ref(null);
     const maOnly = ref(false);
     const adultMode = ref('all'); // 'all', 'safe', 'r18'
-    const sortBy = ref('likes');
+    const sortBy = ref('newest');
 
     // 🌐 번역 상태
     const translateToKo = ref(false);
     const isHotTranslating = ref(false);
+	// 🎨 테마 설정 상태 (브라우저 저장 지원)
+    // 👇 app.js 내부의 themes 배열을 교체해 주세요
+    const themes = [
+      // ☀️ 라이트 테마 (4종)
+      { id: 'light-snow', name: '[라이트] 퓨어 스노우', emoji: '❄️' },
+      { id: 'light-sakura', name: '[라이트] 벚꽃 사쿠라', emoji: '🌸' },
+      { id: 'light-matcha', name: '[라이트] 말차 그린티', emoji: '🍵' },
+      { id: 'light-latte', name: '[라이트] 바닐라 라떼', emoji: '☕' },
+
+      // 🌙 다크 테마 (4종)
+      { id: 'dark-violet', name: '[다크] 미드나잇 퍼플', emoji: '💜' },
+      { id: 'dark-navy', name: '[다크] 심해 네이비', emoji: '🌊' },
+      { id: 'dark-forest', name: '[다크] 섀도우 포레스트', emoji: '🌲' },
+      { id: 'dark-crimson', name: '[다크] 블러드 와인', emoji: '🍷' },
+
+      // 🌌 딥 블랙 테마 (1종)
+      { id: 'deep-black', name: '[딥 블랙] 올레드 옵시디언', emoji: '🖤' },
+    ];
+    
+    // 기본 테마: [다크] 미드나잇 퍼플
+    const currentTheme = ref(localStorage.getItem('vrc_theme') || 'dark-violet');
+
+    const currentThemeName = computed(() => {
+      const t = themes.find(th => th.id === currentTheme.value);
+      return t ? t.name : '[다크] 미드나잇 퍼플';
+    });
+
+    const applyTheme = () => {
+      document.body.className = document.body.className.replace(/\btheme-\S+/g, '').trim();
+      document.body.classList.add(`theme-${currentTheme.value}`);
+      localStorage.setItem('vrc_theme', currentTheme.value);
+    };
 
     // 🔍 텍스트 검색 및 다중 태그 상태
     const searchType = ref('shop');
@@ -46,6 +78,16 @@ createApp({
       new_count: 0
     });
     let syncPollTimer = null;
+	// 🖼️ 아이템 미리보기 모달 상태
+    const showPreviewModal = ref(false);
+    const previewItem = ref(null);
+	const previewImages = ref([]);
+    const currentImageIndex = ref(0);
+    const loadingImages = ref(false);
+	const previewDescription = ref('');
+    const loadingDescription = ref(false);
+	const previewVariations = ref([]);
+    const loadingVariations = ref(false);
 
     // --- Computed 계산 속성 ---
     const sortLabel = computed(() => {
@@ -348,6 +390,114 @@ createApp({
         console.error('동기화 시작 실패:', e);
       }
     };
+	
+	// 🖼️ 미리보기 모달 열기/닫기
+    // 👇 openPreview 함수 내부 수정 (fetchPreviewVariations 추가)
+    const openPreview = (item) => {
+      previewItem.value = item;
+      currentImageIndex.value = 0;
+      previewImages.value = item.thumbnail_url ? [item.thumbnail_url] : [];
+      showPreviewModal.value = true;
+      fetchPreviewImages(item.item_id, false);
+      fetchPreviewDescription(item.item_id);
+      fetchPreviewVariations(item.item_id); // 👈 추가
+    };
+
+    // 👇 closePreview 함수 내부 수정 (초기화 추가)
+    const closePreview = () => {
+      showPreviewModal.value = false;
+      previewItem.value = null;
+      previewDescription.value = '';
+      previewVariations.value = []; // 👈 추가
+    };
+	
+	// 🖼️ 전체 이미지 불러오기 (온디맨드 / 수동 재파싱)
+    const fetchPreviewImages = async (itemId, force = false) => {
+      loadingImages.value = true;
+      try {
+        const res = await fetch(`/api/items/${itemId}/images?force=${force}`);
+        const data = await res.json();
+        if (data.images && data.images.length > 0) {
+          previewImages.value = data.images;
+        } else if (previewItem.value && previewItem.value.thumbnail_url) {
+          previewImages.value = [previewItem.value.thumbnail_url];
+        }
+      } catch (e) {
+        console.error('이미지 로드 실패:', e);
+        if (previewItem.value && previewItem.value.thumbnail_url) {
+          previewImages.value = [previewItem.value.thumbnail_url];
+        }
+      } finally {
+        loadingImages.value = false;
+      }
+    };
+
+    // 좌/우 슬라이드 및 썸네일 직접 선택
+    const nextImage = () => {
+      if (previewImages.value.length > 0) {
+        currentImageIndex.value = (currentImageIndex.value + 1) % previewImages.value.length;
+      }
+    };
+
+    const prevImage = () => {
+      if (previewImages.value.length > 0) {
+        currentImageIndex.value = (currentImageIndex.value - 1 + previewImages.value.length) % previewImages.value.length;
+      }
+    };
+
+    const selectImage = (idx) => {
+      currentImageIndex.value = idx;
+    };
+
+    // 수동 이미지 재파싱
+    const reparseImages = () => {
+      if (previewItem.value) {
+        fetchPreviewImages(previewItem.value.item_id, true);
+      }
+    };
+	
+	// 📝 상세 설명 비동기 불러오기 (온디맨드)
+    const fetchPreviewDescription = async (itemId) => {
+      loadingDescription.value = true;
+      previewDescription.value = '';
+      try {
+        const res = await fetch(`/api/items/${itemId}/description`);
+        const data = await res.json();
+        previewDescription.value = data.description || '작성된 상세 설명이 없습니다.';
+      } catch (e) {
+        console.error('설명 로드 실패:', e);
+        previewDescription.value = '상세 설명을 불러오지 못했습니다.';
+      } finally {
+        loadingDescription.value = false;
+      }
+    };
+	
+	// 📦 세부 옵션 비동기 불러오기 (온디맨드)
+    const fetchPreviewVariations = async (itemId) => {
+      loadingVariations.value = true;
+      previewVariations.value = [];
+      try {
+        const res = await fetch(`/api/items/${itemId}/variations`);
+        const data = await res.json();
+        previewVariations.value = data.variations || [];
+      } catch (e) {
+        console.error('바리에이션 로드 실패:', e);
+      } finally {
+        loadingVariations.value = false;
+      }
+    };
+
+    // 💵 옵션별 가격 깔끔 포맷 (숫자, 문자열 모두 대응)
+    const formatVariationPrice = (p) => {
+      if (p === 0 || p === '0' || p === '¥ 0') return '무료';
+      if (typeof p === 'number') return '¥' + p.toLocaleString();
+      if (typeof p === 'string') {
+        const clean = p.replace(/[^0-9]/g, '');
+        if (!clean || clean === '0') return '무료';
+        return '¥' + Number(clean).toLocaleString();
+      }
+      return p || '가격 미정';
+    };
 
     // 초기화
     const initApp = async () => {
@@ -360,6 +510,7 @@ createApp({
     };
 
     onMounted(() => {
+      applyTheme(); // 👈 접속 시 저장된 테마 즉시 적용
       checkAuth();
     });
 
@@ -408,6 +559,26 @@ createApp({
       toggleTagMode,
       removeTag,
       clearAllTags,
+	  showPreviewModal,
+      previewItem,
+      openPreview,
+      closePreview,
+      previewImages,
+      currentImageIndex,
+      loadingImages,
+      nextImage,
+      prevImage,
+      selectImage,
+      reparseImages,
+      previewDescription,
+      loadingDescription,
+	  previewVariations,
+      loadingVariations,
+      formatVariationPrice,
+      themes,
+      currentTheme,
+      currentThemeName,
+      applyTheme,
       loadMore
     };
   }
