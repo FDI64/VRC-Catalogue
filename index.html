@@ -15,13 +15,13 @@
 <body class="bg-slate-950 text-slate-100 min-h-screen">
   <div id="app" class="max-w-[1680px] mx-auto px-4 sm:px-6 py-6">
     
-    <!-- 1. 전체 화면 메인 레이아웃 (인증 안 된 경우 블러 처리) -->
+    <!-- 1. 메인 레이아웃 (미인증 시 블러 처리) -->
     <div 
       class="flex flex-col lg:flex-row gap-8 items-start transition duration-300"
       :class="!isAuthenticated ? 'filter blur-md pointer-events-none select-none' : ''"
     >
       <!-- 👈 왼쪽: Sticky 사이드바 -->
-      <aside class="w-full lg:w-80 shrink-0 lg:sticky lg:top-6 max-h-[calc(100vh-3rem)] overflow-y-auto custom-scrollbar bg-slate-900/70 border border-slate-800 p-5 rounded-2xl backdrop-blur-md space-y-5">
+      <aside class="w-full lg:w-80 shrink-0 lg:sticky lg:top-6 max-h-[calc(100vh-3rem)] overflow-y-auto custom-scrollbar bg-slate-900/70 border border-slate-800 p-5 rounded-2xl backdrop-blur-md space-y-4">
         
         <div>
           <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400 tracking-tight">
@@ -31,9 +31,9 @@
         </div>
 
         <!-- 🌐 한국어 번역 토글 스위치 -->
-        <div class="bg-slate-950 border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+        <div class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-base">🌐</span>
+            <span class="text-sm">🌐</span>
             <div>
               <div class="text-xs font-bold text-slate-200">
                 한국어 제목 번역
@@ -46,14 +46,42 @@
           <button 
             @click="toggleTranslation"
             :disabled="isHotTranslating"
-            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+            class="relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
             :class="translateToKo ? 'bg-violet-600' : 'bg-slate-800'"
           >
             <span 
-              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+              class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
               :class="translateToKo ? 'translate-x-5' : 'translate-x-0'"
             />
           </button>
+        </div>
+
+        <!-- 🔞 연령 등급 구분 버튼 -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-slate-300">연령 등급 필터</label>
+          <div class="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+            <button 
+              @click="setAdultMode('safe')"
+              class="py-1.5 rounded-lg font-bold transition text-center cursor-pointer"
+              :class="adultMode === 'safe' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+            >
+              전연령만
+            </button>
+            <button 
+              @click="setAdultMode('all')"
+              class="py-1.5 rounded-lg font-bold transition text-center cursor-pointer"
+              :class="adultMode === 'all' ? 'bg-violet-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+            >
+              전체
+            </button>
+            <button 
+              @click="setAdultMode('r18')"
+              class="py-1.5 rounded-lg font-bold transition text-center cursor-pointer"
+              :class="adultMode === 'r18' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-rose-400'"
+            >
+              🔞 R-18만
+            </button>
+          </div>
         </div>
 
         <!-- 1. 단어 검색창 -->
@@ -142,7 +170,7 @@
         <!-- 5. 카테고리 수직 메뉴 -->
         <div class="space-y-2 pt-2 border-t border-slate-800/80">
           <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">카테고리</label>
-          <div class="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+          <div class="flex flex-col gap-1 max-h-36 overflow-y-auto custom-scrollbar pr-1">
             <button 
               @click="selectCategory(null)"
               class="w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center justify-between"
@@ -191,7 +219,7 @@
             
             <div 
               v-if="tagSuggestions.length > 0" 
-              class="absolute z-20 left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-44 overflow-y-auto custom-scrollbar divide-y divide-slate-800"
+              class="absolute z-20 left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-40 overflow-y-auto custom-scrollbar divide-y divide-slate-800"
             >
               <div 
                 v-for="t in tagSuggestions" 
@@ -267,7 +295,7 @@
           </div>
         </div>
 
-        <!-- 8. 🔒 [신규] 로그아웃 버튼 -->
+        <!-- 8. 로그아웃 버튼 -->
         <div class="pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-500">
           <span>접속 보호 활성화됨</span>
           <button @click="handleLogout" class="hover:text-rose-400 font-semibold transition underline">
@@ -332,7 +360,8 @@
                 :src="item.thumbnail_url" 
                 referrerpolicy="no-referrer"
                 :alt="item.clean_title || item.title"
-                class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                class="w-full h-full object-cover transition-all duration-300"
+                :class="item.is_adult ? 'blur-md scale-105 group-hover:blur-none group-hover:scale-105' : 'group-hover:scale-105'"
                 loading="lazy"
               >
               <div v-else class="w-full h-full flex flex-col items-center justify-center text-slate-500 text-xs p-3 text-center">
@@ -340,13 +369,21 @@
                 <span v-if="!item.is_available" class="text-rose-400 mt-1 font-semibold">(비공개/삭제)</span>
               </div>
 
+              <!-- R-18 뱃지 -->
+              <span 
+                v-if="item.is_adult" 
+                class="absolute top-2.5 left-2.5 bg-rose-600/90 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black text-white shadow border border-rose-500/60"
+              >
+                🔞 R-18
+              </span>
+
               <!-- 가격 뱃지 -->
               <span class="absolute bottom-2.5 left-2.5 bg-slate-950/85 backdrop-blur-md px-2.5 py-1 rounded-md text-xs font-black shadow"
                     :class="item.price_jpy === 0 ? 'text-emerald-400' : 'text-slate-100'">
                 {{ item.has_multiple_prices ? '~' : '' }}{{ item.price_jpy === 0 ? '무료' : '¥' + item.price_jpy.toLocaleString() }}
               </span>
 
-              <!-- 출시일 뱃지 (00.00.00) -->
+              <!-- 출시일 뱃지 -->
               <span v-if="item.published_at" class="absolute top-2.5 right-2.5 bg-slate-950/75 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-semibold text-slate-400 border border-slate-800/80">
                 {{ formatReleaseDate(item.published_at) }}
               </span>
@@ -355,11 +392,27 @@
             <!-- 메타데이터 본문 -->
             <div class="p-3.5 flex flex-col flex-1 justify-between gap-3">
               <div>
-                <!-- 제작자명 & 카테고리 뱃지 라인 -->
+                <!-- 제작자명 & 로고 & 카테고리 뱃지 -->
                 <div class="flex items-center justify-between gap-2 mb-1.5">
-                  <span class="text-xs font-semibold text-violet-400/90 truncate tracking-wide flex-1 min-w-0" :title="item.shop_name">
-                    {{ item.shop_name || '제작자' }}
-                  </span>
+                  <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                    <img 
+                      v-if="item.shop_thumbnail_url" 
+                      :src="item.shop_thumbnail_url" 
+                      referrerpolicy="no-referrer"
+                      class="w-4 h-4 rounded-md object-cover shrink-0 border border-slate-700/60"
+                      alt="shop icon"
+                    />
+                    <span 
+                      v-else 
+                      class="w-4 h-4 rounded-md bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-[9px] text-violet-300 font-bold shrink-0"
+                    >
+                      {{ (item.shop_name || 'B')[0] }}
+                    </span>
+
+                    <span class="text-xs font-semibold text-violet-400/90 truncate tracking-wide" :title="item.shop_name">
+                      {{ item.shop_name || '제작자' }}
+                    </span>
+                  </div>
 
                   <span 
                     v-if="item.category_name" 
@@ -443,7 +496,7 @@
       </div>
     </div>
 
-    <!-- 🔑 [신규] 1. 초기 비밀번호 생성 마법사 모달 -->
+    <!-- 🔑 초기 비밀번호 생성 마법사 모달 -->
     <div v-if="authNeedsSetup" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
       <div class="bg-slate-900 border border-violet-500/40 rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
         <div class="text-center space-y-2">
@@ -485,7 +538,7 @@
       </div>
     </div>
 
-    <!-- 🔒 [신규] 2. 접속 비밀번호 잠금 해제(로그인) 모달 -->
+    <!-- 🔒 잠금 해제(로그인) 모달 -->
     <div v-if="!authNeedsSetup && !isAuthenticated" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
       <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-8 shadow-2xl space-y-6">
         <div class="text-center space-y-2">
@@ -527,405 +580,7 @@
 
   </div>
 
-  <script>
-    const { createApp, ref, computed, onMounted } = Vue;
-
-    createApp({
-      setup() {
-        // 🔐 인증 상태 관리
-        const isAuthenticated = ref(false);
-        const authNeedsSetup = ref(false);
-        const setupPasswordInput = ref('');
-        const loginPasswordInput = ref('');
-        const authError = ref('');
-        const authSubmitting = ref(false);
-
-        const avatars = ref([]);
-        const categories = ref([]);
-        const selectedAvatar = ref(248);
-        const selectedCategory = ref(null);
-        const maOnly = ref(false);
-
-        const sortBy = ref('likes');
-        const translateToKo = ref(false);
-        const isHotTranslating = ref(false);
-
-        const searchType = ref('shop');
-        const keywordInput = ref('');
-        const appliedKeyword = ref('');
-
-        const tagQuery = ref('');
-        const tagSuggestions = ref([]);
-        const selectedTags = ref([]);
-        let tagDebounceTimer = null;
-
-        const items = ref([]);
-        const loading = ref(false);
-        const offset = ref(0);
-        const limit = 12;
-
-        const showSyncConfirm = ref(false);
-        const syncInfo = ref({
-          is_running: false,
-          progress_msg: '대기 중',
-          new_count: 0
-        });
-        let syncPollTimer = null;
-
-        // 🛡️ 인증 상태 확인
-        const checkAuth = async () => {
-          try {
-            const res = await fetch('/api/auth/status');
-            const data = await res.json();
-            authNeedsSetup.value = data.needs_setup;
-            isAuthenticated.value = data.is_authenticated;
-
-            if (isAuthenticated.value) {
-              initApp();
-            }
-          } catch (e) {
-            console.error('인증 상태 확인 실패:', e);
-          }
-        };
-
-        // 1. 초기 비밀번호 생성 처리
-        const handleSetupPassword = async () => {
-          authError.value = '';
-          authSubmitting.value = true;
-          try {
-            const res = await fetch('/api/auth/setup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ password: setupPasswordInput.value })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || '설정 실패');
-
-            authNeedsSetup.value = false;
-            isAuthenticated.value = true;
-            initApp();
-          } catch (e) {
-            authError.value = e.message;
-          } finally {
-            authSubmitting.value = false;
-          }
-        };
-
-        // 2. 로그인 처리
-        const handleLogin = async () => {
-          authError.value = '';
-          authSubmitting.value = true;
-          try {
-            const res = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ password: loginPasswordInput.value })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || '인증 실패');
-
-            isAuthenticated.value = true;
-            initApp();
-          } catch (e) {
-            authError.value = e.message;
-          } finally {
-            authSubmitting.value = false;
-          }
-        };
-
-        // 3. 로그아웃 처리
-        const handleLogout = async () => {
-          await fetch('/api/auth/logout', { method: 'POST' });
-          isAuthenticated.value = false;
-          loginPasswordInput.value = '';
-          authError.value = '';
-        };
-
-        const sortLabel = computed(() => {
-          const map = {
-            likes: '🔥 좋아요순',
-            trending: '⚡ 트렌딩',
-            newest: '🕒 최신순',
-            price_asc: '💵 낮은가격순',
-            price_desc: '💎 높은가격순'
-          };
-          return map[sortBy.value] || '정렬';
-        });
-
-        const currentAvatarName = computed(() => {
-          if (!selectedAvatar.value) return '전체';
-          const av = avatars.value.find(a => a.avatar_id === selectedAvatar.value);
-          return av ? (av.name_ko || av.name_ja) : '선택됨';
-        });
-
-        const currentCategoryName = computed(() => {
-          if (!selectedCategory.value) return '전체';
-          const cat = categories.value.find(c => c.category_id === selectedCategory.value);
-          return cat ? (cat.name_ko || cat.name_ja || cat.name_en) : '전체';
-        });
-
-        const formatReleaseDate = (dateStr) => {
-          if (!dateStr) return '';
-          try {
-            const d = new Date(dateStr);
-            const yy = String(d.getFullYear()).slice(-2);
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            return `${yy}.${mm}.${dd}`;
-          } catch {
-            return dateStr.slice(2, 10).replace(/-/g, '.');
-          }
-        };
-
-        const fetchAvatars = async () => {
-          try {
-            const res = await fetch('/api/avatars');
-            if (res.status === 401) { isAuthenticated.value = false; return; }
-            avatars.value = await res.json();
-          } catch (e) {
-            console.error('아바타 로드 실패:', e);
-          }
-        };
-
-        const fetchCategories = async () => {
-          try {
-            const res = await fetch('/api/categories');
-            if (res.status === 401) { isAuthenticated.value = false; return; }
-            categories.value = await res.json();
-          } catch (e) {
-            console.error('카테고리 로드 실패:', e);
-          }
-        };
-
-        const checkSyncStatus = async () => {
-          try {
-            const res = await fetch('/api/sync-status');
-            if (res.status === 401) return;
-            const data = await res.json();
-            const wasRunning = syncInfo.value.is_running;
-            syncInfo.value = data;
-
-            if (wasRunning && !data.is_running && data.new_count > 0) {
-              fetchItems(false);
-            }
-          } catch (e) {
-            console.error('동기화 상태 조회 실패:', e);
-          }
-        };
-
-        const startManualSync = async () => {
-          showSyncConfirm.value = false;
-          try {
-            await fetch('/api/sync-new-items', { method: 'POST' });
-            checkSyncStatus();
-            if (!syncPollTimer) {
-              syncPollTimer = setInterval(checkSyncStatus, 1500);
-            }
-          } catch (e) {
-            console.error('동기화 시작 실패:', e);
-          }
-        };
-
-        const onTagInput = () => {
-          clearTimeout(tagDebounceTimer);
-          const q = tagQuery.value.trim();
-          if (!q) {
-            tagSuggestions.value = [];
-            return;
-          }
-
-          tagDebounceTimer = setTimeout(async () => {
-            try {
-              const res = await fetch(`/api/tags?q=${encodeURIComponent(q)}`);
-              tagSuggestions.value = await res.json();
-            } catch (e) {
-              console.error('태그 검색 실패:', e);
-            }
-          }, 250);
-        };
-
-        const addTag = (tagObj, mode) => {
-          const exists = selectedTags.value.find(t => t.tag_id === tagObj.tag_id);
-          const displayName = tagObj.name_ko && tagObj.name_ko !== tagObj.name 
-            ? `${tagObj.name_ko} (${tagObj.name})` 
-            : tagObj.name;
-
-          if (exists) {
-            exists.mode = mode;
-          } else {
-            selectedTags.value.push({
-              tag_id: tagObj.tag_id,
-              name: tagObj.name,
-              display_name: displayName,
-              mode: mode
-            });
-          }
-
-          tagQuery.value = '';
-          tagSuggestions.value = [];
-          onFilterChange();
-        };
-
-        const toggleTagMode = (st) => {
-          st.mode = st.mode === 'include' ? 'exclude' : 'include';
-          onFilterChange();
-        };
-
-        const removeTag = (tagId) => {
-          selectedTags.value = selectedTags.value.filter(t => t.tag_id !== tagId);
-          onFilterChange();
-        };
-
-        const clearAllTags = () => {
-          selectedTags.value = [];
-          onFilterChange();
-        };
-
-        const toggleTranslation = async () => {
-          translateToKo.value = !translateToKo.value;
-          if (!translateToKo.value) return;
-
-          const missing = items.value.filter(it => !it.title_ko);
-          if (missing.length === 0) return;
-
-          isHotTranslating.value = true;
-          try {
-            const ids = missing.map(it => it.item_id).join(',');
-            const res = await fetch(`/api/translate-items?item_ids=${ids}`);
-            const data = await res.json();
-            
-            if (data.translations) {
-              for (const it of items.value) {
-                if (data.translations[it.item_id]) {
-                  it.title_ko = data.translations[it.item_id];
-                }
-              }
-            }
-          } catch (e) {
-            console.error('핫로딩 번역 실패:', e);
-          } finally {
-            isHotTranslating.value = false;
-          }
-        };
-
-        const fetchItems = async (isAppend = false) => {
-          loading.value = true;
-          try {
-            let url = `/api/items?limit=${limit}&offset=${offset.value}&ma_only=${maOnly.value}&sort_by=${sortBy.value}&translate=${translateToKo.value}`;
-            if (selectedAvatar.value) url += `&avatar_id=${selectedAvatar.value}`;
-            if (selectedCategory.value) url += `&category_id=${selectedCategory.value}`;
-            if (appliedKeyword.value) {
-              url += `&search_type=${searchType.value}&keyword=${encodeURIComponent(appliedKeyword.value)}`;
-            }
-
-            const incIds = selectedTags.value.filter(t => t.mode === 'include').map(t => t.tag_id);
-            const excIds = selectedTags.value.filter(t => t.mode === 'exclude').map(t => t.tag_id);
-            if (incIds.length > 0) url += `&include_tags=${incIds.join(',')}`;
-            if (excIds.length > 0) url += `&exclude_tags=${excIds.join(',')}`;
-
-            const res = await fetch(url);
-            if (res.status === 401) { isAuthenticated.value = false; return; }
-            const data = await res.json();
-
-            if (isAppend) {
-              items.value.push(...data.items);
-            } else {
-              items.value = data.items;
-            }
-          } catch (e) {
-            console.error('아이템 로드 실패:', e);
-          } finally {
-            loading.value = false;
-          }
-        };
-
-        const onFilterChange = () => {
-          offset.value = 0;
-          fetchItems(false);
-        };
-
-        const selectCategory = (catId) => {
-          selectedCategory.value = catId;
-          onFilterChange();
-        };
-
-        const applySearch = () => {
-          appliedKeyword.value = keywordInput.value.trim();
-          onFilterChange();
-        };
-
-        const clearSearch = () => {
-          keywordInput.value = '';
-          appliedKeyword.value = '';
-          onFilterChange();
-        };
-
-        const loadMore = () => {
-          offset.value += limit;
-          fetchItems(true);
-        };
-
-        // 앱 초기화 (인증 완료 후 호출)
-        const initApp = async () => {
-          await Promise.all([fetchAvatars(), fetchCategories()]);
-          await fetchItems(false);
-          checkSyncStatus();
-          if (!syncPollTimer) {
-            syncPollTimer = setInterval(checkSyncStatus, 2000);
-          }
-        };
-
-        onMounted(() => {
-          checkAuth();
-        });
-
-        return {
-          isAuthenticated,
-          authNeedsSetup,
-          setupPasswordInput,
-          loginPasswordInput,
-          authError,
-          authSubmitting,
-          handleSetupPassword,
-          handleLogin,
-          handleLogout,
-          avatars,
-          categories,
-          selectedAvatar,
-          selectedCategory,
-          maOnly,
-          sortBy,
-          sortLabel,
-          translateToKo,
-          isHotTranslating,
-          toggleTranslation,
-          searchType,
-          keywordInput,
-          appliedKeyword,
-          tagQuery,
-          tagSuggestions,
-          selectedTags,
-          currentAvatarName,
-          currentCategoryName,
-          formatReleaseDate,
-          showSyncConfirm,
-          syncInfo,
-          startManualSync,
-          items,
-          loading,
-          onFilterChange,
-          selectCategory,
-          applySearch,
-          clearSearch,
-          onTagInput,
-          addTag,
-          toggleTagMode,
-          removeTag,
-          clearAllTags,
-          loadMore
-        };
-      }
-    }).mount('#app');
-  </script>
+  <!-- 🚀 외부 분리된 자바스크립트 파일 로드 -->
+  <script src="/app.js"></script>
 </body>
 </html>

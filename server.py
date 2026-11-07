@@ -18,6 +18,7 @@ from deep_translator import GoogleTranslator, MyMemoryTranslator
 
 DB_PATH = r"E:\vrcatalogue\data\vrcatalogue.sqlite"
 HTML_PATH = r"E:\vrcatalogue\index.html"
+APP_JS_PATH = r"E:\vrcatalogue\app.js"
 AUTH_FILE_PATH = r"E:\vrcatalogue\auth_config.json"
 
 app = FastAPI(title="VRChat BOOTH Catalogue")
@@ -39,12 +40,8 @@ sync_status = {
     "new_count": 0
 }
 
-# 🔐 인증 세션 풀
 active_sessions = set()
 
-# -------------------------------------------------------------
-# 🛡️ 비밀번호 로컬 파일 암호화 / 검증 헬퍼
-# -------------------------------------------------------------
 def hash_password(password: str, salt: bytes = None) -> (str, str):
     if salt is None:
         salt = secrets.token_bytes(16)
@@ -62,14 +59,11 @@ def is_auth_configured() -> bool:
 def check_login(request: Request):
     token = request.cookies.get("catalogue_session")
     if not is_auth_configured():
-        return True # 최초 설정 전에는 허용
+        return True
     if not token or token not in active_sessions:
         raise HTTPException(status_code=401, detail="인증이 필요합니다.")
     return True
 
-# -------------------------------------------------------------
-# 🔑 인증 API 엔드포인트
-# -------------------------------------------------------------
 class PasswordPayload(BaseModel):
     password: str
 
@@ -97,11 +91,9 @@ def setup_password(payload: PasswordPayload, response: Response):
     with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=2)
 
-    # 설정 완료 후 즉시 세션 발급
     new_token = secrets.token_hex(32)
     active_sessions.add(new_token)
     response.set_cookie(key="catalogue_session", value=new_token, httponly=True, samesite="lax", max_age=86400*30)
-    print("🔒 [보안] 새 비밀번호가 암호화되어 로컬 파일(auth_config.json)에 저장되었습니다.")
     return {"status": "success", "message": "비밀번호 설정 완료"}
 
 @app.post("/api/auth/login")
@@ -131,9 +123,6 @@ def logout(request: Request, response: Response):
     response.delete_cookie(key="catalogue_session")
     return {"status": "success", "message": "로그아웃 완료"}
 
-# -------------------------------------------------------------
-# 🌐 카탈로그 백엔드 로직
-# -------------------------------------------------------------
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -205,8 +194,29 @@ def load_avatar_matchers(conn):
 async def parse_single_new_item(client: httpx.AsyncClient, item_id: int, headers: dict, avatar_matchers: list):
     async with CRAWL_SEMAPHORE:
         item_url = f"https://booth.pm/ja/items/{item_id}"
+        json_url = f"https://booth.pm/ja/items/{item_id}.json"
+
+        req_headers = dict(headers)
+        req_headers["Cookie"] = "adult=include"
+        req_headers["Accept"] = "application/json, text/html, */*"
+
+        likes = 0
+        raw_pub_date = None
+        shop_thumb = None
+
+        # 1. BOOTH JSON API (좋아요, 출시일, 상점 썸네일)
         try:
-            resp = await client.get(item_url, headers=headers)
+            resp_json = await client.get(json_url, headers=req_headers)
+            if resp_json.status_code == 200:
+                jdata = resp_json.json()
+                likes = jdata.get("wish_lists_count", 0)
+                raw_pub_date = jdata.get("published_at")
+                shop_thumb = jdata.get("shop", {}).get("thumbnail_url")
+        except Exception:
+            pass
+
+        try:
+            resp = await client.get(item_url, headers=req_headers)
             if resp.status_code != 200:
                 return None
 
@@ -240,15 +250,10 @@ async def parse_single_new_item(client: httpx.AsyncClient, item_id: int, headers
             price_jpy = min(prices) if prices else 0
             has_mult_prices = len(set(prices)) > 1 and max(prices) > min(prices)
 
-            raw_pub_date = None
-            m_pub = re.search(r'"published_at"\s*:\s*"([^"]+)"', resp.text)
-            if m_pub:
-                raw_pub_date = m_pub.group(1)
-
             if not raw_pub_date:
-                meta_pub = soup.find("meta", attrs={"property": ["article:published_time", "product:published_time"]})
-                if meta_pub and meta_pub.get("content"):
-                    raw_pub_date = meta_pub["content"]
+                m_pub = re.search(r'"published_at"\s*:\s*"([^"]+)"', resp.text)
+                if m_pub:
+                    raw_pub_date = m_pub.group(1)
 
             if raw_pub_date:
                 try:
@@ -290,8 +295,10 @@ async def parse_single_new_item(client: httpx.AsyncClient, item_id: int, headers
                 "booth_url": item_url,
                 "shop_name": shop_name,
                 "shop_url": shop_url,
+                "shop_thumbnail_url": shop_thumb,
                 "booth_category": booth_category,
                 "price_jpy": price_jpy,
+                "likes": likes,
                 "is_adult": is_adult,
                 "published_at": published_at,
                 "content_rating": content_rating,
@@ -307,8 +314,7 @@ async def parse_single_new_item(client: httpx.AsyncClient, item_id: int, headers
                 "matched_avatar_ids": list(matched_avatar_ids),
                 "cat_id": cat_id
             }
-        except Exception as e:
-            print(f"❌ #{item_id} 스크래핑 실패: {e}")
+        except Exception:
             return None
 
 async def crawl_booth_new_assets(max_pages: int = 3):
@@ -332,7 +338,8 @@ async def crawl_booth_new_assets(max_pages: int = 3):
             try:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
-                    return re.findall(r'/items/(\d+)', resp.text)
+                    found = re.findall(r'/items/(\d+)', resp.text)
+                    return found
             except Exception:
                 pass
             return []
@@ -355,32 +362,33 @@ async def crawl_booth_new_assets(max_pages: int = 3):
             return
 
         placeholders = ",".join(["?"] * len(discovered_ids))
-        cursor.execute(f"SELECT item_id FROM items WHERE item_id IN ({placeholders})", discovered_ids)
-        existing_ids = set(r[0] for r in cursor.fetchall())
-        new_ids = [i for i in discovered_ids if i not in existing_ids]
+        cursor.execute(f"SELECT item_id, likes FROM items WHERE item_id IN ({placeholders})", discovered_ids)
+        existing_info = {r[0]: r[1] for r in cursor.fetchall()}
+        
+        target_ids = [i for i in discovered_ids if (i not in existing_info or existing_info[i] == 0)]
 
-        if not new_ids:
+        if not target_ids:
             sync_status["is_running"] = False
-            sync_status["progress_msg"] = "이미 모든 에셋이 최신 상태입니다 (신작 0개)."
+            sync_status["progress_msg"] = "이미 모든 에셋이 최신 상태입니다."
             sync_status["last_synced"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.close()
             return
 
         avatar_matchers = load_avatar_matchers(conn)
-        total_new = len(new_ids)
+        total_targets = len(target_ids)
         completed = 0
 
         async def wrapped_worker(i_id: int):
             nonlocal completed
             res = await parse_single_new_item(client, i_id, headers, avatar_matchers)
             completed += 1
-            sync_status["progress_msg"] = f"신작 수집 중 ({completed}/{total_new})..."
+            sync_status["progress_msg"] = f"정보 및 좋아요 수집 중 ({completed}/{total_targets})..."
             return res
 
-        workers = [wrapped_worker(i_id) for i_id in new_ids]
+        workers = [wrapped_worker(i_id) for i_id in target_ids]
         parsed_results = await asyncio.gather(*workers)
 
-        new_added_count = 0
+        updated_count = 0
         for item in parsed_results:
             if not item:
                 continue
@@ -392,18 +400,18 @@ async def crawl_booth_new_assets(max_pages: int = 3):
                         price_jpy, likes, is_adult, status, published_at,
                         content_rating, quest_compatible, uses_liltoon, uses_poiyomi,
                         uses_vrcfury, uses_modular_avatar
-                    ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'ok', ?, ?, ?, ?, ?, ?, ?);
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, ?);
                 """, (
                     item["item_id"], item["booth_url"], item["shop_name"], item["shop_url"], item["booth_category"],
-                    item["price_jpy"], item["is_adult"], item["published_at"], item["content_rating"],
+                    item["price_jpy"], item["likes"], item["is_adult"], item["published_at"], item["content_rating"],
                     item["is_quest"], item["uses_liltoon"], item["uses_poiyomi"], item["uses_vrcfury"], item["uses_ma"]
                 ))
 
                 cursor.execute("""
                     INSERT OR REPLACE INTO item_cache (
-                        item_id, title, thumbnail_url, is_available, has_multiple_prices
-                    ) VALUES (?, ?, ?, 1, ?);
-                """, (item["item_id"], item["raw_title"], item["thumb_url"], 1 if item["has_mult_prices"] else 0))
+                        item_id, title, thumbnail_url, is_available, has_multiple_prices, shop_thumbnail_url
+                    ) VALUES (?, ?, ?, 1, ?, ?);
+                """, (item["item_id"], item["raw_title"], item["thumb_url"], 1 if item["has_mult_prices"] else 0, item.get("shop_thumbnail_url")))
 
                 for av_id in item["matched_avatar_ids"]:
                     cursor.execute("""
@@ -420,18 +428,17 @@ async def crawl_booth_new_assets(max_pages: int = 3):
                     VALUES (?, ?, ?, 1);
                 """, (item["item_id"], item["cat_id"], subcat_id))
 
-                new_added_count += 1
-            except Exception as insert_err:
-                print(f"❌ #{item['item_id']} DB 삽입 실패: {insert_err}")
+                updated_count += 1
+            except Exception:
+                pass
 
         conn.commit()
         conn.close()
 
     sync_status["is_running"] = False
-    sync_status["new_count"] = new_added_count
-    sync_status["progress_msg"] = f"완료 ({new_added_count}개 등록됨)"
+    sync_status["new_count"] = updated_count
+    sync_status["progress_msg"] = f"완료 ({updated_count}개 갱신됨)"
     sync_status["last_synced"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"🎉 [고속 수집 완료] 총 {new_added_count}개의 신작 에셋이 DB에 성공적으로 등록되었습니다!\n")
 
 @app.on_event("startup")
 def init_cache_table():
@@ -444,6 +451,7 @@ def init_cache_table():
             thumbnail_url TEXT,
             is_available BOOLEAN DEFAULT 1,
             has_multiple_prices BOOLEAN DEFAULT 0,
+            shop_thumbnail_url TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
@@ -456,6 +464,9 @@ def init_cache_table():
         conn.execute("ALTER TABLE item_cache ADD COLUMN has_multiple_prices BOOLEAN DEFAULT 0;")
     if "title_ko" not in columns:
         conn.execute("ALTER TABLE item_cache ADD COLUMN title_ko TEXT;")
+    # 💡 [신규] 상점 프로필 썸네일 컬럼 추가
+    if "shop_thumbnail_url" not in columns:
+        conn.execute("ALTER TABLE item_cache ADD COLUMN shop_thumbnail_url TEXT;")
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_item_categories_fast ON item_categories (category_id, item_id);")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_item_cat_item ON item_categories (item_id, is_primary);")
@@ -471,7 +482,6 @@ def init_cache_table():
     conn.commit()
     conn.close()
 
-    # 🚀 시작 시 1회 자동 수집 (비밀번호 설정 여부와 무관하게 백그라운드 구동)
     asyncio.create_task(crawl_booth_new_assets(max_pages=2))
 
 @app.get("/", response_class=HTMLResponse)
@@ -479,8 +489,13 @@ def serve_index():
     if os.path.exists(HTML_PATH):
         return FileResponse(HTML_PATH)
     return "<h1>index.html을 찾을 수 없습니다. 경로를 확인하세요.</h1>"
+    
+@app.get("/app.js")
+def serve_app_js():
+    if os.path.exists(APP_JS_PATH):
+        return FileResponse(APP_JS_PATH, media_type="application/javascript")
+    return Response(status_code=404)
 
-# 🛡️ 아래의 모든 데이터 API는 로그인 검증(check_login)을 거침
 @app.get("/api/sync-status", dependencies=[Depends(check_login)])
 def get_sync_status():
     return sync_status
@@ -538,10 +553,21 @@ async def translate_items_on_demand(item_ids: str = Query(...)):
 async def fetch_booth_item(client: httpx.AsyncClient, item_id: int, shop_name: str = ""):
     async with FETCH_SEMAPHORE:
         url = f"https://booth.pm/ja/items/{item_id}"
+        json_url = f"https://booth.pm/ja/items/{item_id}.json"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "ja,ko;q=0.9,en;q=0.8"
+            "Accept-Language": "ja,ko;q=0.9,en;q=0.8",
+            "Cookie": "adult=include"
         }
+
+        shop_thumb = None
+        # JSON API에서 상점 아이콘 확인
+        try:
+            resp_j = await client.get(json_url, headers=headers)
+            if resp_j.status_code == 200:
+                shop_thumb = resp_j.json().get("shop", {}).get("thumbnail_url")
+        except Exception:
+            pass
 
         try:
             resp = await client.get(url, headers=headers)
@@ -551,6 +577,7 @@ async def fetch_booth_item(client: httpx.AsyncClient, item_id: int, shop_name: s
                     "title": "비공개/삭제된 아이템", 
                     "clean_title": "비공개/삭제된 아이템", 
                     "thumbnail_url": None, 
+                    "shop_thumbnail_url": None,
                     "is_available": False, 
                     "has_multiple_prices": False
                 }
@@ -605,6 +632,7 @@ async def fetch_booth_item(client: httpx.AsyncClient, item_id: int, shop_name: s
                 "title": raw_title, 
                 "clean_title": clean_title, 
                 "thumbnail_url": image_meta["content"] if image_meta else None, 
+                "shop_thumbnail_url": shop_thumb,
                 "is_available": True, 
                 "has_multiple_prices": has_multiple_prices
             }
@@ -685,11 +713,13 @@ def search_tags(q: str = Query(..., min_length=1)):
     conn.close()
     return rows
 
+# 🚀 [업데이트] c.shop_thumbnail_url 컬럼 조회 추가
 @app.get("/api/items", dependencies=[Depends(check_login)])
 async def get_items(
     avatar_id: Optional[int] = Query(None),
     category_id: Optional[int] = Query(None),
     ma_only: bool = Query(False),
+    adult_mode: str = Query("all", regex="^(all|safe|r18)$"),
     sort_by: str = Query("likes", regex="^(likes|trending|newest|price_asc|price_desc)$"),
     search_type: Optional[str] = Query("shop"),
     keyword: Optional[str] = Query(None),
@@ -705,6 +735,11 @@ async def get_items(
     conditions = ["i.status = 'ok'"]
     params = {"limit": limit, "offset": offset}
     joins = []
+
+    if adult_mode == "safe":
+        conditions.append("i.is_adult = 0")
+    elif adult_mode == "r18":
+        conditions.append("i.is_adult = 1")
 
     if avatar_id:
         joins.append("JOIN item_avatar_compatibility compat ON i.item_id = compat.item_id")
@@ -775,10 +810,11 @@ async def get_items(
     join_clause = " ".join(joins)
     where_clause = "WHERE " + " AND ".join(conditions)
 
+    # 💡 c.shop_thumbnail_url 추가 조회
     query = f"""
         SELECT i.item_id, i.shop_name, i.shop_url, i.likes, i.price_jpy, i.published_at,
-               i.uses_modular_avatar, i.quest_compatible,
-               c.title, c.title_ko, c.thumbnail_url, c.is_available,
+               i.uses_modular_avatar, i.quest_compatible, i.is_adult,
+               c.title, c.title_ko, c.thumbnail_url, c.shop_thumbnail_url, c.is_available,
                COALESCE(c.has_multiple_prices, 0) as has_multiple_prices,
                COALESCE(cat.name_ko, cat.name_ja, cat.name_en) as category_name,
                COALESCE(subcat.name_ko, subcat.name_ja, subcat.name_en) as subcategory_name
@@ -813,13 +849,13 @@ async def get_items(
         for res, t_ko in zip(valid_results, translated_titles):
             res["title_ko"] = t_ko
             cache_records.append((
-                res["item_id"], res["title"], res["title_ko"], res["thumbnail_url"], res["is_available"], 1 if res["has_multiple_prices"] else 0
+                res["item_id"], res["title"], res["title_ko"], res["thumbnail_url"], res["is_available"], 1 if res["has_multiple_prices"] else 0, res.get("shop_thumbnail_url")
             ))
 
         if cache_records:
             cursor.executemany("""
-                INSERT OR REPLACE INTO item_cache (item_id, title, title_ko, thumbnail_url, is_available, has_multiple_prices)
-                VALUES (?, ?, ?, ?, ?, ?);
+                INSERT OR REPLACE INTO item_cache (item_id, title, title_ko, thumbnail_url, is_available, has_multiple_prices, shop_thumbnail_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?);
             """, cache_records)
             conn.commit()
 
@@ -829,6 +865,7 @@ async def get_items(
                 it["title"] = res_map[it["item_id"]]["title"]
                 it["title_ko"] = res_map[it["item_id"]]["title_ko"]
                 it["thumbnail_url"] = res_map[it["item_id"]]["thumbnail_url"]
+                it["shop_thumbnail_url"] = res_map[it["item_id"]].get("shop_thumbnail_url")
                 it["is_available"] = res_map[it["item_id"]]["is_available"]
                 it["has_multiple_prices"] = res_map[it["item_id"]]["has_multiple_prices"]
 
