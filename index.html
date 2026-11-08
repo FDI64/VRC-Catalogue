@@ -710,32 +710,21 @@
               <!-- 2. 하단 컨트롤 바: 미니 썸네일 가로 스크롤 & 재파싱 버튼 -->
               <div class="flex items-center justify-between gap-2">
                 <!-- 미니 썸네일 목록 (클릭 시 해당 사진으로 바로 이동) -->
-                <div class="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1 flex-1 min-w-0">
-                  <div 
-                    v-for="(imgUrl, idx) in previewImages" 
-                    :key="idx"
-                    @click="selectImage(idx)"
-                    class="w-12 h-12 rounded-lg overflow-hidden shrink-0 border-2 transition cursor-pointer bg-slate-950"
-                    :class="currentImageIndex === idx 
-                      ? 'border-violet-500 shadow-md shadow-violet-500/30 opacity-100 scale-105' 
-                      : 'border-slate-800 opacity-50 hover:opacity-90'"
-                  >
-                    <img :src="imgUrl" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
-                  </div>
-                </div>
-
-                <!-- 🔄 수동 재파싱 버튼 -->
-                <button 
-                  @click="reparseImages"
-                  :disabled="loadingImages"
-                  class="shrink-0 flex items-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 text-[11px] font-medium px-2.5 py-2 rounded-xl transition cursor-pointer disabled:opacity-50"
-                  title="BOOTH에서 최신 이미지 강제 다시 불러오기"
+                <div class="flex items-center gap-2 overflow-x-auto custom-scrollbar py-1 w-full">
+                <div 
+                  v-for="(imgUrl, idx) in previewImages" 
+                  :key="idx"
+                  @click="selectImage(idx)"
+                  class="w-12 h-12 rounded-lg overflow-hidden shrink-0 border-2 transition cursor-pointer bg-slate-950"
+                  :class="currentImageIndex === idx 
+                    ? 'border-violet-500 shadow-md shadow-violet-500/30 opacity-100 scale-105' 
+                    : 'border-slate-800 opacity-50 hover:opacity-90'"
                 >
-                  <span :class="loadingImages ? 'animate-spin inline-block' : ''">🔄</span>
-                  <span class="hidden sm:inline">재파싱</span>
-                </button>
+                  <img :src="imgUrl" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
+                </div>
               </div>
-            </div>
+			 </div>
+			 </div>
 
             <!-- 제목 및 스펙 요약 -->
             <!-- 👉 우측: 스펙, 세부 옵션, 상세 설명 영역 (세로 정렬 완료) -->
@@ -819,22 +808,37 @@
 
         </div>
 
-        <!-- 모달 하단 버튼 바 -->
-        <div class="p-4 px-6 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-3">
+        <!-- 모달 하단 버튼 바 (왼쪽: 전체 재파싱 / 오른쪽: 닫기 & BOOTH 열기) -->
+        <div class="p-4 px-6 border-t border-slate-800 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3">
+          
+          <!-- 🔄 좌측: JSON 전체 데이터 재파싱 버튼 -->
           <button 
-            @click="closePreview" 
-            class="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition cursor-pointer"
+            @click="reparseItem" 
+            :disabled="isReparsing"
+            class="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-900 border border-slate-700 hover:bg-slate-800 transition cursor-pointer disabled:opacity-50"
+            title="이미지, 설명, 옵션, 최신 좋아요 수까지 전체 강제 새로고침"
           >
-            닫기
+            <span :class="isReparsing ? 'animate-spin inline-block' : ''">🔄</span>
+            <span>아이템 전체 재파싱</span>
           </button>
-          <a 
-            :href="'https://booth.pm/ja/items/' + previewItem.item_id" 
-            target="_blank" 
-            class="flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 shadow-md shadow-violet-600/20 transition cursor-pointer"
-          >
-            <span>BOOTH 판매 페이지 열기</span>
-            <span>↗</span>
-          </a>
+
+          <!-- 🚪 우측: 닫기 & BOOTH 판매 페이지 이동 -->
+          <div class="flex items-center gap-3 w-full sm:w-auto">
+            <button 
+              @click="closePreview" 
+              class="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition cursor-pointer flex-1 sm:flex-none"
+            >
+              닫기
+            </button>
+            <a 
+              :href="'https://booth.pm/ja/items/' + previewItem.item_id" 
+              target="_blank" 
+              class="flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 shadow-md shadow-violet-600/20 transition cursor-pointer flex-1 sm:flex-none"
+            >
+              <span>BOOTH 판매 페이지 열기</span>
+              <span>↗</span>
+            </a>
+          </div>
         </div>
 
       </div>

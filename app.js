@@ -88,6 +88,7 @@ createApp({
     const loadingDescription = ref(false);
 	const previewVariations = ref([]);
     const loadingVariations = ref(false);
+	const isReparsing = ref(false);
 
     // --- Computed 계산 속성 ---
     const sortLabel = computed(() => {
@@ -450,9 +451,34 @@ createApp({
     };
 
     // 수동 이미지 재파싱
-    const reparseImages = () => {
-      if (previewItem.value) {
-        fetchPreviewImages(previewItem.value.item_id, true);
+    const reparseItem = async () => {
+      if (!previewItem.value) return;
+      isReparsing.value = true;
+      try {
+        const res = await fetch(`/api/items/${previewItem.value.item_id}/reparse`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+          const it = data.item;
+          
+          // 모달 내부 데이터 즉각 교체 (핫로딩)
+          previewItem.value = { ...previewItem.value, ...it };
+          if (it.images && it.images.length > 0) previewImages.value = it.images;
+          if (it.variations) previewVariations.value = it.variations;
+          if (it.description) previewDescription.value = it.description;
+          currentImageIndex.value = 0;
+          
+          // 메인 그리드의 카드 정보(좋아요, 가격 등)도 실시간 동기화
+          const idx = items.value.findIndex(x => x.item_id === it.item_id);
+          if (idx !== -1) {
+            items.value[idx] = { ...items.value[idx], ...it };
+          }
+        }
+      } catch (e) {
+        console.error("재파싱 오류:", e);
+        alert("재파싱 중 오류가 발생했습니다.");
+      } finally {
+        isReparsing.value = false;
       }
     };
 	
@@ -569,7 +595,6 @@ createApp({
       nextImage,
       prevImage,
       selectImage,
-      reparseImages,
       previewDescription,
       loadingDescription,
 	  previewVariations,
@@ -579,6 +604,8 @@ createApp({
       currentTheme,
       currentThemeName,
       applyTheme,
+	  isReparsing,
+	  reparseItem,
       loadMore
     };
   }

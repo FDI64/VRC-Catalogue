@@ -534,6 +534,99 @@ def trigger_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(crawl_booth_new_assets, max_pages=3)
     return {"status": "started", "message": "신규 에셋 수집을 시작했습니다."}
 
+# 🔄 [신규] 아이템 전체 데이터 강제 재파싱 (좋아요, 썸네일, 설명, 옵션, 사진 모두 업데이트)
+@app.post("/api/items/{item_id}/reparse", dependencies=[Depends(check_login)])
+async def reparse_item_full(item_id: int):
+    conn = get_db()
+    avatar_matchers = load_avatar_matchers(conn)
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,ko;q=0.9,en;q=0.8",
+        "Cookie": "adult=include"
+    }
+    
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        # 1. 아이템 기본 정보 (HTML + JSON) 스크래핑
+        item_data = await parse_single_new_item(client, item_id, headers, avatar_matchers)
+        
+        if not item_data:
+            conn.close()
+            raise HTTPException(status_code=404, detail="아이템 정보를 가져올 수 없습니다.")
+            
+        images = []
+        variations = []
+        desc = ""
+        
+        # 2. JSON API에서 설명, 옵션, 전체 갤러리 이미지 추가 추출
+        try:
+            resp_json = await client.get(f"https://booth.pm/ja/items/{item_id}.json", headers=headers)
+            if resp_json.status_code == 200:
+                jdata = resp_json.json()
+                desc = jdata.get("description") or ""
+                
+                for v in (jdata.get("variations") or []):
+                    variations.append({
+                        "name": v.get("name") or "기본 옵션",
+                        "price": v.get("price", 0)
+                    })
+                    
+                for img in jdata.get("images", []):
+                    u = img.get("original") or img.get("resized")
+                    if u and u not in images:
+                        images.append(u)
+                if not images:
+                    images = jdata.get("thumbnail_image_urls", [])
+        except Exception as e:
+            print(f"❌ #{item_id} 상세 JSON 파싱 오류: {e}")
+
+        cursor = conn.cursor()
+        
+        # 3. items 테이블 최신 정보 덮어쓰기 (좋아요 수 등)
+        cursor.execute("""
+            INSERT OR REPLACE INTO items (
+                item_id, booth_url, shop_name, shop_url, booth_category,
+                price_jpy, likes, is_adult, status, published_at,
+                content_rating, quest_compatible, uses_liltoon, uses_poiyomi,
+                uses_vrcfury, uses_modular_avatar
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?, ?);
+        """, (
+            item_data["item_id"], item_data["booth_url"], item_data["shop_name"], item_data["shop_url"], item_data["booth_category"],
+            item_data["price_jpy"], item_data["likes"], item_data["is_adult"], item_data["published_at"], item_data["content_rating"],
+            item_data["is_quest"], item_data["uses_liltoon"], item_data["uses_poiyomi"], item_data["uses_vrcfury"], item_data["uses_ma"]
+        ))
+
+        # 기존 한국어 제목 번역이 있으면 보존 (없으면 자동 번역)
+        cursor.execute("SELECT title_ko FROM item_cache WHERE item_id = ?", (item_id,))
+        row = cursor.fetchone()
+        t_ko = row["title_ko"] if row else None
+        if not t_ko:
+            translated_list = await translate_batch_safe([item_data["clean_title"]])
+            if translated_list and translated_list[0]:
+                t_ko = translated_list[0]
+        item_data["title_ko"] = t_ko
+
+        # 4. item_cache 테이블 덮어쓰기 (모든 캐시 데이터 갱신)
+        cursor.execute("""
+            INSERT OR REPLACE INTO item_cache (
+                item_id, title, title_ko, thumbnail_url, is_available, has_multiple_prices,
+                shop_thumbnail_url, image_urls, description, variations
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (
+            item_data["item_id"], item_data["raw_title"], item_data["title_ko"], item_data["thumb_url"], 1, 
+            1 if item_data["has_mult_prices"] else 0, item_data.get("shop_thumbnail_url"),
+            json.dumps(images) if images else None, desc, json.dumps(variations) if variations else None
+        ))
+
+        conn.commit()
+        
+        item_data["images"] = images
+        item_data["variations"] = variations
+        item_data["description"] = desc
+
+    conn.close()
+    return {"status": "success", "item": item_data}
+
 # 🖼️ [신규] 아이템 전체 이미지 온디맨드 조회 및 수동 재파싱 API
 @app.get("/api/items/{item_id}/images", dependencies=[Depends(check_login)])
 async def get_item_images(item_id: int, force: bool = Query(False, description="강제 재파싱 여부")):
