@@ -4,6 +4,12 @@ data/
 *.sqlite3
 *.db
 
+dist/
+*.sqlite
+*.exe
+*.json
+*.rar
+
 # 비밀번호 및 보안 설정 제외
 auth_config.json
 

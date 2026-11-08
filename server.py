@@ -6,6 +6,7 @@ import re
 import secrets
 import sqlite3
 import unicodedata
+import sys # 👈 sys 임포트 추가
 from datetime import datetime
 from typing import Optional, List
 from fastapi import FastAPI, Query, BackgroundTasks, Request, Response, HTTPException, Depends
@@ -16,10 +17,29 @@ import httpx
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 
-DB_PATH = r"E:\vrcatalogue\data\vrcatalogue.sqlite"
-HTML_PATH = r"E:\vrcatalogue\index.html"
-APP_JS_PATH = r"E:\vrcatalogue\app.js"
-AUTH_FILE_PATH = r"E:\vrcatalogue\auth_config.json"
+# -------------------------------------------------------------
+# 📁 [수정됨] PyInstaller exe 및 파이썬 환경 동적 경로 인식
+# -------------------------------------------------------------
+if getattr(sys, 'frozen', False):
+    # exe로 빌드되어 실행될 때 (sys.executable은 exe 파일의 위치)
+    BASE_DIR = os.path.dirname(sys.executable)
+    ASSET_DIR = sys._MEIPASS  # html, js가 임시 압축 해제되는 폴더
+else:
+    # 일반 파이썬(.py)으로 실행될 때
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    ASSET_DIR = BASE_DIR
+
+# DB가 들어갈 data 폴더 경로 (없으면 자동 생성)
+DATA_DIR = os.path.join(BASE_DIR, "data")
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+# 파일 절대 경로를 모두 동적(BASE_DIR)으로 매핑
+DB_PATH = os.path.join(DATA_DIR, "vrcatalogue.sqlite")
+AUTH_FILE_PATH = os.path.join(BASE_DIR, "auth_config.json")
+HTML_PATH = os.path.join(ASSET_DIR, "index.html")
+APP_JS_PATH = os.path.join(ASSET_DIR, "app.js")
+# -------------------------------------------------------------
 
 app = FastAPI(title="VRChat BOOTH Catalogue")
 
